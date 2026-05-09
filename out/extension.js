@@ -45,22 +45,40 @@ const AiScanner_1 = require("./scanners/AiScanner");
 const AnalysisOrchestrator_1 = require("./AnalysisOrchestrator");
 const DiagnosticsPublisher_1 = require("./publishers/DiagnosticsPublisher");
 const StatusBarManager_1 = require("./publishers/StatusBarManager");
+const DashboardProvider_1 = require("./providers/DashboardProvider");
+const CodeActionsProvider_1 = require("./providers/CodeActionsProvider");
 function activate(context) {
-    // --- Build all pieces (Dependency Inversion: inject deps, never hard-code) ---
+    // --- Build every piece and inject its dependencies ---
     const config = new ConfigManager_1.ConfigManager();
     const store = new ResultStore_1.ResultStore();
     const static_ = new StaticScanner_1.StaticScanner();
     const complexity = new ComplexityScanner_1.ComplexityScanner(config);
     const duplicate = new DuplicateScanner_1.DuplicateScanner(config);
     const ai = new AiScanner_1.AiScanner(config);
+    // Publishers: update the UI after every analysis
     const diagPub = new DiagnosticsPublisher_1.DiagnosticsPublisher();
     const statusBar = new StatusBarManager_1.StatusBarManager(store);
-    // After every analysis: update squiggles and status bar
+    const dashboard = new DashboardProvider_1.DashboardProvider(store);
+    // After every analysis: show squiggles, update status bar, refresh dashboard
     const onComplete = (result) => {
-        diagPub.present(result); // show squiggles
-        statusBar.render(); // update count in status bar
+        diagPub.present(result);
+        statusBar.render();
+        dashboard.refresh();
     };
     const orchestrator = new AnalysisOrchestrator_1.AnalysisOrchestrator(store, config, static_, complexity, duplicate, ai, onComplete);
+    // Code actions = the lightbulb menu with Fix and Explain options
+    const codeActions = new CodeActionsProvider_1.CodeActionsProvider(store, ai);
+    // --- Register the sidebar dashboard ---
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider(DashboardProvider_1.DashboardProvider.viewId, dashboard));
+    // --- Register lightbulb actions for all supported languages ---
+    context.subscriptions.push(vscode.languages.registerCodeActionsProvider([
+        { language: 'javascript' },
+        { language: 'typescript' },
+        { language: 'javascriptreact' },
+        { language: 'typescriptreact' },
+        { language: 'python' },
+        { language: 'java' },
+    ], codeActions, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix, vscode.CodeActionKind.Empty] }));
     // --- Commands ---
     // Analyze the currently open file on demand
     context.subscriptions.push(vscode.commands.registerCommand('codeSec.analyzeFile', async () => {
@@ -78,7 +96,7 @@ function activate(context) {
             vscode.window.showInformationMessage(n === 0 ? `CodeSec: ✅ No issues in ${file}` : `CodeSec: ${n} issue(s) in ${file}`);
         });
     }));
-    // Scan every supported file in the workspace
+    // Scan every supported file in the open workspace
     context.subscriptions.push(vscode.commands.registerCommand('codeSec.analyzeWorkspace', async () => {
         const exts = config.getLanguages().flatMap(langToExts).join(',');
         const uris = await vscode.workspace.findFiles(`**/*.{${exts}}`, '{**/node_modules/**,**/dist/**}');
@@ -91,9 +109,10 @@ function activate(context) {
                 if (token.isCancellationRequested)
                     break;
                 try {
-                    await orchestrator.analyze(await vscode.workspace.openTextDocument(uris[i]));
+                    const doc = await vscode.workspace.openTextDocument(uris[i]);
+                    await orchestrator.analyze(doc);
                 }
-                catch { }
+                catch { /* skip unreadable files */ }
                 progress.report({ message: `${i + 1}/${uris.length}`, increment: (1 / uris.length) * 100 });
             }
             const total = store.getAll().reduce((n, r) => n + r.issues.length, 0);
@@ -105,14 +124,19 @@ function activate(context) {
         store.clear();
         diagPub.clearAll();
         statusBar.render();
+        dashboard.refresh();
         vscode.window.showInformationMessage('CodeSec: All issues cleared.');
     }));
-    // Open the Activity Bar dashboard
+    // Open the Activity Bar panel
     context.subscriptions.push(vscode.commands.registerCommand('codeSec.openDashboard', () => {
         vscode.commands.executeCommand('workbench.view.extension.codeSec');
     }));
+    // Generate a starter .codesec.json the team can commit and share
+    context.subscriptions.push(vscode.commands.registerCommand('codeSec.generateConfig', () => {
+        generateProjectConfig();
+    }));
     // --- Event listeners ---
-    // Auto-analyze when the user saves, if enabled in settings
+    // Auto-analyze on save if enabled in settings
     context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
         if (config.shouldAnalyzeOnSave())
             await orchestrator.analyze(doc);
@@ -122,18 +146,20 @@ function activate(context) {
         if (e.contentChanges.length)
             await orchestrator.analyze(e.document, 1500);
     }));
-    // Clean up results when a file is closed so stale data doesn't accumulate
+    // Remove stale results when a file is closed
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(doc => {
         store.remove(doc.uri);
         diagPub.clear(doc.uri);
         statusBar.render();
+        dashboard.refresh();
     }));
     // Analyze whatever is already open when the extension first loads
     for (const editor of vscode.window.visibleTextEditors) {
         orchestrator.analyze(editor.document);
     }
-    context.subscriptions.push(diagPub, statusBar, orchestrator);
-    // Friendly first-run nudge for Ollama users
+    // Register everything for cleanup when the extension deactivates
+    context.subscriptions.push(diagPub, statusBar, dashboard, codeActions, orchestrator);
+    // First-run nudge for Ollama users
     if (config.getAiProvider() === 'ollama') {
         vscode.window.showInformationMessage('CodeSec: AI runs locally via Ollama (free). Make sure it\'s running.', 'Get Ollama', 'Change Provider').then(c => {
             if (c === 'Get Ollama')
@@ -144,11 +170,38 @@ function activate(context) {
     }
 }
 function deactivate() { }
-// Map language IDs to file extensions for the workspace scan glob
+// Map VS Code language IDs to file extensions for the workspace scan glob
 function langToExts(lang) {
     const map = {
-        javascript: ['js', 'jsx', 'mjs'], typescript: ['ts', 'tsx'],
-        python: ['py'], java: ['java'],
+        javascript: ['js', 'jsx', 'mjs'],
+        typescript: ['ts', 'tsx'],
+        python: ['py'],
+        java: ['java'],
     };
     return map[lang] ?? [lang];
+}
+// Write a starter .codesec.json at the workspace root
+async function generateProjectConfig() {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) {
+        vscode.window.showWarningMessage('CodeSec: No workspace open.');
+        return;
+    }
+    // Use require here since fs is a Node built-in, not a VS Code API
+    const fs = require('fs');
+    const path = require('path');
+    const dest = path.join(folders[0].uri.fsPath, '.codesec.json');
+    const starter = {
+        aiProvider: 'ollama',
+        aiModel: 'qwen2.5-coder:7b',
+        complexityThreshold: 10,
+        duplicateLineThreshold: 6,
+        languages: ['javascript', 'typescript', 'python', 'java'],
+        ignorePatterns: ['**/node_modules/**', '**/dist/**', '**/*.min.js'],
+        disabledRules: [],
+    };
+    fs.writeFileSync(dest, JSON.stringify(starter, null, 2));
+    const doc = await vscode.workspace.openTextDocument(dest);
+    await vscode.window.showTextDocument(doc);
+    vscode.window.showInformationMessage('CodeSec: .codesec.json created — commit this to share settings with your team.');
 }
