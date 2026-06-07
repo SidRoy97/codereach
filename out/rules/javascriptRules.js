@@ -1,60 +1,151 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runJavaScriptRules = runJavaScriptRules;
-// Each rule is self-contained — add new ones at the bottom, nothing else changes (Open/Closed)
 const RULES = [
-    // eval() can run any string as code — open door for attackers
+    // --- Security: Injection ---
+    // eval() runs any string as code — classic code injection vector
     { id: 'js:no-eval',
         pattern: /\beval\s*\(/g,
         severity: 'error', category: 'security',
-        message: 'eval() runs arbitrary code and is a security risk.',
+        message: 'eval() executes arbitrary code — severe security risk.',
         suggestion: 'Use JSON.parse() for data, or restructure to avoid dynamic execution.' },
-    // innerHTML renders HTML — if value includes user input, scripts can run
+    // innerHTML renders HTML including scripts — XSS if value is user-controlled
     { id: 'js:no-inner-html',
         pattern: /\.innerHTML\s*=/g,
         severity: 'warning', category: 'security',
-        message: 'innerHTML can cause XSS if the value includes user input.',
-        suggestion: 'Use textContent for plain text, or sanitize with DOMPurify.' },
-    // Credentials committed to version control leak to anyone with repo access
-    { id: 'js:no-hardcoded-secret',
-        pattern: /(?:password|secret|api_?key|token|auth)\s*=\s*['"`][^'"`]{4,}['"`]/gi,
+        message: 'innerHTML assignment can cause XSS if value includes user input.',
+        suggestion: 'Use textContent for plain text, or sanitize with DOMPurify first.' },
+    // document.write is an old XSS vector and blocks page rendering
+    { id: 'js:no-document-write',
+        pattern: /document\.write\s*\(/g,
+        severity: 'warning', category: 'security',
+        message: 'document.write() is a security risk and blocks page rendering.' },
+    // SQL built by string concat = injection — covers common Node DB patterns
+    { id: 'js:sql-injection',
+        pattern: /(?:query|execute|run)\s*\(\s*[`'"]\s*SELECT|INSERT|UPDATE|DELETE[^`'"]*\$\{/gi,
         severity: 'error', category: 'security',
-        message: 'Possible hardcoded secret detected.',
-        suggestion: 'Move to environment variables or a secrets manager.' },
-    // console.log left in = noise in production and leaks internal info
+        message: 'SQL query built with string interpolation — SQL injection risk.',
+        suggestion: 'Use parameterized queries: db.query("SELECT * FROM users WHERE id = ?", [id])' },
+    // Template literal SQL is still injection if it includes variables
+    { id: 'js:sql-template-literal',
+        pattern: /`\s*(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE)\s[^`]*\$\{/gi,
+        severity: 'error', category: 'security',
+        message: 'SQL query uses template literal with variables — SQL injection risk.',
+        suggestion: 'Use parameterized queries or an ORM like Prisma/TypeORM.' },
+    // --- Security: Hardcoded secrets ---
+    // Credentials in source code get committed and leaked
+    { id: 'js:no-hardcoded-secret',
+        pattern: /(?:password|secret|api_?key|token|auth|private_?key)\s*[:=]\s*['"`][^'"`\s]{4,}['"`]/gi,
+        severity: 'error', category: 'security',
+        message: 'Possible hardcoded secret or credential detected.',
+        suggestion: 'Move to environment variables: process.env.MY_SECRET' },
+    // JWT secrets hardcoded = anyone can forge tokens
+    { id: 'js:hardcoded-jwt-secret',
+        pattern: /jwt\.sign\s*\([^,]+,\s*['"`][^'"`]{4,}['"`]/g,
+        severity: 'error', category: 'security',
+        message: 'JWT signed with hardcoded secret — tokens can be forged.',
+        suggestion: 'Use process.env.JWT_SECRET and store it outside source code.' },
+    // --- Security: Path traversal ---
+    // User input in file paths = attacker can read /etc/passwd etc
+    { id: 'js:path-traversal',
+        pattern: /(?:readFile|writeFile|readFileSync|writeFileSync|createReadStream)\s*\([^)]*(?:req\.|params\.|query\.|body\.)/g,
+        severity: 'error', category: 'security',
+        message: 'File path includes user input — path traversal vulnerability.',
+        suggestion: 'Sanitize the path: path.basename(userInput) and validate it stays within allowed directory.' },
+    // --- Security: Network / SSRF ---
+    // Fetch with user-controlled URL = attacker can make server call internal services
+    { id: 'js:ssrf-risk',
+        pattern: /fetch\s*\(\s*(?:req\.|params\.|query\.|body\.)\w+/g,
+        severity: 'error', category: 'security',
+        message: 'fetch() URL comes from request data — Server-Side Request Forgery (SSRF) risk.',
+        suggestion: 'Validate the URL against an allowlist before making the request.' },
+    // --- Security: Insecure crypto ---
+    // MD5 is broken — don't use for passwords or security
+    { id: 'js:weak-hash-md5',
+        pattern: /(?:md5|MD5)\s*\(/g,
+        severity: 'error', category: 'security',
+        message: 'MD5 is cryptographically broken — do not use for security purposes.',
+        suggestion: 'Use bcrypt for passwords, or SHA-256 (crypto.createHash("sha256")) for checksums.' },
+    // SHA1 is deprecated for security use
+    { id: 'js:weak-hash-sha1',
+        pattern: /createHash\s*\(\s*['"`]sha1['"`]\)/g,
+        severity: 'warning', category: 'security',
+        message: 'SHA1 is deprecated for security use.',
+        suggestion: 'Use SHA-256 or SHA-512: crypto.createHash("sha256")' },
+    // Math.random is predictable — not suitable for tokens or IDs
+    { id: 'js:insecure-random',
+        pattern: /Math\.random\s*\(\s*\)/g,
+        severity: 'warning', category: 'security',
+        message: 'Math.random() is not cryptographically secure.',
+        suggestion: 'Use crypto.randomBytes() or crypto.randomUUID() for security-sensitive values.' },
+    // --- Security: Cookies ---
+    // Cookie without httpOnly can be read by JavaScript — XSS can steal sessions
+    { id: 'js:cookie-no-httponly',
+        pattern: /(?:res\.cookie|setCookie)\s*\([^)]*\)\s*(?!.*httpOnly)/g,
+        severity: 'warning', category: 'security',
+        message: 'Cookie set without httpOnly flag — JavaScript can read it.',
+        suggestion: 'Add httpOnly: true to prevent XSS-based session theft.' },
+    // Cookie without secure flag is sent over plain HTTP
+    { id: 'js:cookie-no-secure',
+        pattern: /(?:res\.cookie|setCookie)\s*\([^)]*\)\s*(?!.*secure)/g,
+        severity: 'warning', category: 'security',
+        message: 'Cookie set without secure flag — will be sent over plain HTTP.',
+        suggestion: 'Add secure: true so the cookie is only sent over HTTPS.' },
+    // --- Security: Input validation ---
+    // req.body used directly without validation is dangerous in APIs
+    { id: 'js:no-input-validation',
+        pattern: /req\.body\.\w+\s*(?!.*(?:trim|validate|sanitize|escape|parseInt|parseFloat|Number|Boolean|match|test|replace))/g,
+        severity: 'warning', category: 'security',
+        message: 'Request body field used without visible validation or sanitization.',
+        suggestion: 'Validate with zod, joi, or express-validator before using user input.' },
+    // RegExp from user input can be used for ReDoS attacks
+    { id: 'js:regex-dos',
+        pattern: /new\s+RegExp\s*\(\s*(?:req\.|params\.|query\.|body\.)\w+/g,
+        severity: 'error', category: 'security',
+        message: 'RegExp built from user input — ReDoS (regex denial of service) risk.',
+        suggestion: 'Never build regular expressions from user-supplied strings.' },
+    // --- Security: Prototype pollution ---
+    // Merging user objects into existing ones can corrupt prototype chain
+    { id: 'js:prototype-pollution',
+        pattern: /Object\.assign\s*\(\s*\w+\s*,\s*(?:req\.|params\.|query\.|body\.)/g,
+        severity: 'error', category: 'security',
+        message: 'Object.assign with user input can pollute the prototype chain.',
+        suggestion: 'Validate and allowlist keys before merging user-supplied objects.' },
+    // --- Code smells ---
+    // console.log left in = noise in production and leaks info
     { id: 'js:no-console',
         pattern: /\bconsole\.(log|warn|error|debug)\s*\(/g,
         severity: 'hint', category: 'code-smell',
-        message: 'console statement left in — remove before shipping.',
+        message: 'console statement found — remove before shipping.',
         suggestion: 'Use a logging library like winston or pino.' },
-    // debugger stops execution in production — always a bug to ship this
+    // debugger stops execution in production
     { id: 'js:no-debugger',
         pattern: /\bdebugger\b/g,
         severity: 'error', category: 'code-smell',
-        message: 'debugger statement left in code.' },
-    // == coerces types silently: "0" == false is true, === would catch it
+        message: 'debugger statement left in code — remove it.' },
+    // == coerces types silently: "0" == false is true
     { id: 'js:eqeq',
         pattern: /[^!=<>]==[^=>]|[^!=<>]!=[^=>]/g,
         severity: 'warning', category: 'code-smell',
         message: 'Use === or !== to avoid silent type coercion bugs.' },
-    // var is function-scoped, leaks out of blocks — const/let are safer
+    // var leaks out of blocks — const/let are block-scoped
     { id: 'js:no-var',
         pattern: /\bvar\s+/g,
         severity: 'warning', category: 'code-smell',
         message: 'Use const or let instead of var.',
-        suggestion: 'const if value never changes, let if it does.' },
-    // Empty catch blocks hide errors — we never know something went wrong
+        suggestion: 'const if the value never changes, let if it does.' },
+    // Empty catch blocks hide errors silently
     { id: 'js:empty-catch',
         pattern: /catch\s*\([^)]*\)\s*\{\s*\}/g,
         severity: 'warning', category: 'code-smell',
         message: 'Empty catch block silently swallows errors.',
         suggestion: 'Log the error or explain in a comment why ignoring is safe.' },
-    // TODOs are fine temporarily — but track them in the issue tracker not the code
+    // Track in issue tracker, not buried in comments
     { id: 'js:todo',
         pattern: /\/\/\s*(TODO|FIXME|HACK|XXX)/gi,
         severity: 'info', category: 'code-smell',
         message: 'TODO/FIXME comment — move this to your issue tracker.' },
-    // Magic numbers have no context — future readers won't know what 86400 means
+    // Magic numbers have no context — 86400 tells you nothing
     { id: 'js:magic-number',
         pattern: /(?<![.\w])(?!0\b|1\b|-1\b)\d{3,}(?!\s*[)\]},;:])/g,
         severity: 'hint', category: 'code-smell',
@@ -94,33 +185,36 @@ function runJavaScriptRules(lines) {
     issues.push(...detectLongFunctions(lines));
     return issues;
 }
-// Flag functions that are too long to fit in your head at once
+// Flag functions that are too long to hold in your head at once
 function detectLongFunctions(lines) {
     const issues = [];
     let fnStart = -1;
     let depth = 0;
     let startDepth = 0;
     for (let i = 0; i < lines.length; i++) {
-        // Detect a function opening
         if (fnStart === -1 && /\bfunction\b|\=\>\s*\{/.test(lines[i])) {
             fnStart = i;
             startDepth = depth;
         }
-        // Count braces to track nesting
         for (const ch of lines[i]) {
             if (ch === '{')
                 depth++;
             if (ch === '}')
                 depth--;
         }
-        // When brace depth returns to where the function opened, we're done
         if (fnStart !== -1 && depth <= startDepth) {
             const len = i - fnStart;
             if (len > 50) {
                 issues.push({
-                    id: `js:long-fn:${fnStart}`, message: `Function is ${len} lines — split it up.`,
-                    severity: 'warning', category: 'code-smell', line: fnStart, column: 0,
-                    rule: 'js:long-function', suggestion: 'Aim for under 30 lines per function.', source: 'static',
+                    id: `js:long-fn:${fnStart}`,
+                    message: `Function is ${len} lines long — split it into smaller functions.`,
+                    severity: 'warning',
+                    category: 'code-smell',
+                    line: fnStart,
+                    column: 0,
+                    rule: 'js:long-function',
+                    suggestion: 'Aim for under 30 lines per function.',
+                    source: 'static',
                 });
             }
             fnStart = -1;

@@ -1,60 +1,140 @@
 {
-    "name": "codesec",
-    "displayName": "CodeSec — AI Code Quality",
-    "description": "Real-time code quality, security, and AI-powered fixes. No server needed.",
-    "version": "0.1.0",
-    "publisher": "your-publisher-id",
-    "engines": { "vscode": "^1.85.0" },
-    "categories": ["Linters", "Other"],
-    "activationEvents": ["onStartupFinished"],
-    "main": "./out/extension.js",
-    "contributes": {
-      "commands": [
-        { "command": "codeSec.analyzeFile",      "title": "CodeSec: Analyze Current File" },
-        { "command": "codeSec.analyzeWorkspace", "title": "CodeSec: Analyze Entire Workspace" },
-        { "command": "codeSec.clearIssues",      "title": "CodeSec: Clear All Issues" },
-        { "command": "codeSec.openDashboard",    "title": "CodeSec: Open Dashboard" },
-        { "command": "codeSec.generateConfig",   "title": "CodeSec: Generate .codesec.json" },
-        { "command": "codeSec.fixWithAi",        "title": "CodeSec: Fix with AI" },
-        { "command": "codeSec.explainIssue",     "title": "CodeSec: Explain this Issue" }
-      ],
-      "configuration": {
-        "title": "CodeSec",
-        "properties": {
-          "codeSec.aiProvider": {
-            "type": "string",
-            "default": "ollama",
-            "enum": ["ollama", "openrouter", "anthropic", "openai-compatible"],
-            "description": "Which AI backend to use"
-          },
-          "codeSec.aiModel":   { "type": "string",  "default": "" },
-          "codeSec.aiApiKey":  { "type": "string",  "default": "" },
-          "codeSec.aiBaseUrl": { "type": "string",  "default": "" },
-          "codeSec.analyzeOnSave":          { "type": "boolean", "default": true },
-          "codeSec.enableAiAnalysis":       { "type": "boolean", "default": true },
-          "codeSec.enableStaticAnalysis":   { "type": "boolean", "default": true },
-          "codeSec.complexityThreshold":    { "type": "number",  "default": 10 },
-          "codeSec.duplicateLineThreshold": { "type": "number",  "default": 6 },
-          "codeSec.languages": {
-            "type": "array",
-            "default": ["javascript","typescript","python","java"]
-          }
-        }
-      },
-      "viewsContainers": {
-        "activitybar": [{ "id": "codeSec", "title": "CodeSec", "icon": "media/icon.svg" }]
-      },
-      "views": {
-        "codeSec": [{ "type": "webview", "id": "codeSec.dashboard", "name": "Dashboard" }]
+  "name": "codesec",
+  "displayName": "CodeSec — AI Code Quality",
+  "description": "Real-time code quality, security, AI-powered fixes, and smart context generation for AI assistants.",
+  "version": "0.1.0",
+  "publisher": "your-publisher-id",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Linters", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "codeSec.analyzeFile",        "title": "CodeSec: Analyze Current File" },
+      { "command": "codeSec.analyzeWorkspace",   "title": "CodeSec: Analyze Entire Workspace" },
+      { "command": "codeSec.clearIssues",        "title": "CodeSec: Clear All Issues" },
+      { "command": "codeSec.openDashboard",      "title": "CodeSec: Open Dashboard" },
+      { "command": "codeSec.generateConfig",     "title": "CodeSec: Generate .codesec.json" },
+      { "command": "codeSec.fixWithAi",          "title": "CodeSec: Fix with AI" },
+      { "command": "codeSec.explainIssue",       "title": "CodeSec: Explain this Issue" },
+      { "command": "codeSec.buildSymbolIndex",   "title": "CodeSec: Build Symbol Index" },
+      { "command": "codeSec.copyAiContext",      "title": "CodeSec: Copy AI Context for Selected Symbol" },
+      { "command": "codeSec.copyLightContext",   "title": "CodeSec: Copy Light Context (Summaries Only)" },
+      { "command": "codeSec.showBlastRadius",    "title": "CodeSec: Show Blast Radius for Current File" },
+      { "command": "codeSec.generateAiContext", "title": "CodeSec: Generate AI Context File (AGENTS.md)" },
+      { "command": "codeSec.summarizeFiles",     "title": "CodeSec: Summarize Project Files" }
+    ],
+    "configuration": {
+      "title": "CodeSec",
+      "properties": {
+        "codeSec.aiProvider": {
+          "type": "string",
+          "default": "ollama",
+          "enum": [
+            "ollama",
+            "groq",
+            "huggingface",
+            "openrouter",
+            "anthropic",
+            "openai-compatible"
+          ],
+          "enumDescriptions": [
+            "Local models via Ollama — 100% free, no account, no key, runs on your machine",
+            "Groq cloud — free account, no credit card, extremely fast inference",
+            "Hugging Face Inference API — free account, no credit card, huge model selection",
+            "OpenRouter — free tier models, free account needed",
+            "Anthropic Claude — paid API key required",
+            "Any OpenAI-compatible server (LM Studio, vLLM, llama.cpp, Together AI)"
+          ],
+          "markdownDescription": "Which AI backend to use.\n\n**Free with no credit card:** `ollama` (no account), `groq` (free account), `huggingface` (free account)"
+        },
+        "codeSec.aiModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model to use. Leave blank for the recommended default per provider.\n\n**Ollama:** `qwen2.5-coder:7b` `codellama` `llama3.2`\n\n**Groq:** `qwen-2.5-coder-32b` `llama-3.3-70b-versatile`\n\n**HuggingFace:** `Qwen/Qwen2.5-Coder-7B-Instruct`"
+        },
+        "codeSec.aiApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "API key for cloud providers.\n\n- **Ollama / LM Studio:** leave empty\n- **Groq:** free key at https://console.groq.com\n- **HuggingFace:** free token at https://huggingface.co/settings/tokens\n- **OpenRouter:** free key at https://openrouter.ai"
+        },
+        "codeSec.aiBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Override the base URL for the chosen provider. Leave blank to use the default."
+        },
+        "codeSec.analyzeOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically analyze the file every time you save."
+        },
+        "codeSec.enableAiAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run AI deep analysis in addition to static rules."
+        },
+        "codeSec.enableStaticAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run built-in static regex rules."
+        },
+        "codeSec.complexityThreshold": {
+          "type": "number",
+          "default": 10,
+          "description": "Cyclomatic complexity threshold — functions above this are flagged."
+        },
+        "codeSec.duplicateLineThreshold": {
+          "type": "number",
+          "default": 6,
+          "description": "Minimum number of identical lines to flag as a duplicate block."
+        },
+        "codeSec.languages": {
+        "type": "array",
+        "default": [
+          "javascript",
+          "javascriptreact",
+          "typescript",
+          "typescriptreact",
+          "python",
+          "java"
+        ],
+        "description": "List of language IDs to analyze."
+      }
       }
     },
-    "scripts": {
-      "compile": "tsc -p ./",
-      "watch":   "tsc -watch -p ./"
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeSec",
+          "title": "CodeSec",
+          "icon": "media/icon.svg"
+        }
+      ]
     },
-    "devDependencies": {
-      "@types/node":   "^20.0.0",
-      "@types/vscode": "^1.85.0",
-      "typescript":    "^5.3.0"
+    "views": {
+      "codeSec": [
+        {
+          "type": "webview",
+          "id": "codeSec.dashboard",
+          "name": "Dashboard"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        { "command": "codeSec.analyzeFile",    "group": "codeSec@1" },
+        { "command": "codeSec.copyAiContext",  "group": "codeSec@2" },
+        { "command": "codeSec.showBlastRadius","group": "codeSec@3" }
+      ]
     }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch":   "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node":   "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript":    "^5.3.0"
   }
+}

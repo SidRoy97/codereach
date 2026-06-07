@@ -35,82 +35,99 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AiScanner = void 0;
 const vscode = __importStar(require("vscode"));
-// Default model per provider when the user hasn't set one
+// Best default model per provider — chosen for code quality and free availability
 const DEFAULT_MODELS = {
     ollama: 'qwen2.5-coder:7b', // best free local code model
+    groq: 'qwen-2.5-coder-32b', // free, very fast, excellent at code
+    huggingface: 'Qwen/Qwen2.5-Coder-7B-Instruct', // free HF inference, good at code
     openrouter: 'qwen/qwen-2.5-coder-32b-instruct:free',
     anthropic: 'claude-sonnet-4-20250514',
     'openai-compatible': 'llama3',
 };
-// Default base URL per provider
+// Base URL per provider — where we send the API request
 const DEFAULT_URLS = {
     ollama: 'http://localhost:11434',
+    groq: 'https://api.groq.com/openai', // Groq speaks OpenAI format
+    huggingface: 'https://api-inference.huggingface.co',
     openrouter: 'https://openrouter.ai/api',
     anthropic: 'https://api.anthropic.com',
     'openai-compatible': 'http://localhost:1234',
 };
-// Instruct the AI to return strict JSON — no prose, no markdown
-const SYSTEM = `You are a senior software engineer doing a code review.
+// Where to get a free key per provider
+const KEY_SIGNUP_URLS = {
+    groq: 'https://console.groq.com',
+    huggingface: 'https://huggingface.co/settings/tokens',
+    openrouter: 'https://openrouter.ai',
+    anthropic: 'https://console.anthropic.com',
+};
+// Instruct the model to return strict JSON only — no prose, no markdown fences
+const SYSTEM_PROMPT = `You are a senior software engineer doing a code review.
 Find real concrete issues only. Do not invent issues.
 Check: security vulnerabilities, bugs, code smells, performance problems.
 
-Return ONLY a JSON array. Each element:
-{"line":<1-indexed>,"severity":"error"|"warning"|"info"|"hint",
+Return ONLY a JSON array. Each element must have:
+{"line":<1-indexed number>,"severity":"error"|"warning"|"info"|"hint",
  "category":"code-smell"|"security"|"complexity"|"duplicate",
- "message":"<what is wrong>","suggestion":"<how to fix>"}
+ "message":"<what is wrong>","suggestion":"<how to fix it>"}
 
-Return [] if no issues. JSON only — no markdown, no explanation.`;
-// Single job: call the AI, parse its response, return Issues
+Return [] if no issues found. JSON array only — no markdown, no explanation.`;
+// Single job: call the configured AI provider and return parsed Issues
 class AiScanner {
     constructor(config) {
         this.config = config;
         this.name = 'AiScanner';
     }
     async scan(document) {
+        // Respect the user's choice to disable AI
         if (!this.config.isAiEnabled())
             return [];
-        // Skip very large files — too many tokens and too slow
+        // Skip very large files — too slow and too many tokens
         if (document.getText().length > 60000) {
             vscode.window.showWarningMessage('CodeSec: File >60KB — skipping AI scan.');
             return [];
         }
         const provider = this.config.getAiProvider();
-        const model = this.config.getAiModel() || DEFAULT_MODELS[provider];
-        const url = (this.config.getAiBaseUrl() || DEFAULT_URLS[provider]).replace(/\/$/, '');
-        const key = this.config.getAiApiKey();
+        const model = this.config.getAiModel() || DEFAULT_MODELS[provider] || DEFAULT_MODELS['ollama'];
+        const baseUrl = (this.config.getAiBaseUrl() || DEFAULT_URLS[provider] || '').replace(/\/$/, '');
+        const apiKey = this.config.getAiApiKey();
+        // Check cloud providers have a key configured before attempting the call
+        if (this.requiresKey(provider) && !apiKey) {
+            this.showMissingKeyMessage(provider);
+            return [];
+        }
         const userMsg = `Language: ${document.languageId}\n\`\`\`\n${document.getText()}\n\`\`\``;
         try {
             let text;
-            // Route to the right API format — Anthropic uses a different shape than OpenAI
-            if (provider === 'anthropic') {
-                text = await this.callAnthropic(url, key, model, userMsg);
-            }
-            else if (provider === 'ollama') {
-                text = await this.callOllama(url, model, userMsg);
-            }
-            else {
-                // openrouter and openai-compatible both speak OpenAI chat format
-                text = await this.callOpenAI(url, key, model, userMsg, provider);
-            }
-            return this.parse(text);
+            // Route to the right API format — each provider speaks a slightly different dialect
+            if (provider === 'ollama')
+                text = await this.callOllama(baseUrl, model, userMsg);
+            else if (provider === 'huggingface')
+                text = await this.callHuggingFace(baseUrl, apiKey, model, userMsg);
+            else if (provider === 'anthropic')
+                text = await this.callAnthropic(baseUrl, apiKey, model, userMsg);
+            else
+                text = await this.callOpenAiFormat(baseUrl, apiKey, model, userMsg, provider);
+            return this.parseResponse(text);
         }
         catch (err) {
             this.handleError(err, provider);
             return [];
         }
     }
-    // Also used by CodeActionsProvider for fix and explain requests
+    // Used by CodeActionsProvider for targeted fix and explain requests
     async generateText(system, user) {
         const provider = this.config.getAiProvider();
         const model = this.config.getAiModel() || DEFAULT_MODELS[provider];
-        const url = (this.config.getAiBaseUrl() || DEFAULT_URLS[provider]).replace(/\/$/, '');
-        const key = this.config.getAiApiKey();
+        const baseUrl = (this.config.getAiBaseUrl() || DEFAULT_URLS[provider]).replace(/\/$/, '');
+        const apiKey = this.config.getAiApiKey();
         try {
-            if (provider === 'anthropic')
-                return this.callAnthropic(url, key, model, user, system);
             if (provider === 'ollama')
-                return this.callOllama(url, model, user, system);
-            return this.callOpenAI(url, key, model, user, provider, system);
+                return await this.callOllama(baseUrl, model, user, system);
+            if (provider === 'huggingface')
+                return await this.callHuggingFace(baseUrl, apiKey, model, user, system);
+            if (provider === 'anthropic')
+                return await this.callAnthropic(baseUrl, apiKey, model, user, system);
+            return await this.callOpenAiFormat(baseUrl, apiKey, model, user, provider, system);
         }
         catch (err) {
             this.handleError(err, provider);
@@ -118,94 +135,199 @@ class AiScanner {
         }
     }
     // --- Private: one method per API format ---
-    async callOllama(url, model, user, system = SYSTEM) {
-        const res = await fetch(`${url}/api/chat`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, stream: false, options: { temperature: 0.1 },
-                messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+    // Ollama runs locally — no key, no account, just ollama serve
+    async callOllama(baseUrl, model, user, system = SYSTEM_PROMPT) {
+        const res = await fetch(`${baseUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model,
+                stream: false,
+                options: { temperature: 0.1 }, // low temp = consistent analysis output
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user },
+                ],
+            }),
         });
-        // Model not pulled yet — give a specific helpful message
+        // Model not pulled yet — give a specific actionable error
         if (res.status === 404) {
-            vscode.window.showErrorMessage(`CodeSec: Ollama model "${model}" not found. Run: ollama pull ${model}`);
+            vscode.window.showErrorMessage(`CodeSec: Ollama model "${model}" not found.`, `Run: ollama pull ${model}`);
             throw new Error('model not found');
         }
         if (!res.ok)
-            throw new Error(`Ollama ${res.status}`);
+            throw new Error(`Ollama HTTP ${res.status}: ${await res.text()}`);
         const data = await res.json();
         return data?.message?.content ?? '';
     }
-    async callOpenAI(url, key, model, user, provider, system = SYSTEM) {
-        const headers = { 'Content-Type': 'application/json' };
-        if (key)
-            headers['Authorization'] = `Bearer ${key}`;
-        // OpenRouter requires these to track usage in their dashboard
+    // HuggingFace Inference API — free token at huggingface.co/settings/tokens
+    // Supports thousands of open models with no credit card
+    async callHuggingFace(baseUrl, apiKey, model, user, system = SYSTEM_PROMPT) {
+        // HuggingFace uses a different URL shape: /models/{model_id}
+        const url = `${baseUrl}/models/${model}`;
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        // Token is optional for some public models but gives higher rate limits
+        if (apiKey)
+            headers['Authorization'] = `Bearer ${apiKey}`;
+        // HuggingFace chat completion format for instruct models
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                inputs: `<|system|>\n${system}\n<|user|>\n${user}\n<|assistant|>`,
+                parameters: {
+                    temperature: 0.1,
+                    max_new_tokens: 2048,
+                    return_full_text: false, // only return the generated part, not the prompt
+                },
+            }),
+        });
+        // Model is loading on HF side — this is normal for cold starts
+        if (res.status === 503) {
+            const body = await res.json();
+            const wait = Math.ceil(body.estimated_time ?? 20);
+            vscode.window.showWarningMessage(`CodeSec: HuggingFace model is loading (~${wait}s). Try again shortly.`);
+            throw new Error('model loading');
+        }
+        // Model name is wrong or gated — need to pick a different one
+        if (res.status === 404 || res.status === 403) {
+            vscode.window.showErrorMessage(`CodeSec: HuggingFace model "${model}" not found or is gated.`, 'Browse Free Models').then(c => {
+                if (c === 'Browse Free Models') {
+                    vscode.env.openExternal(vscode.Uri.parse('https://huggingface.co/models?pipeline_tag=text-generation&sort=trending&search=code'));
+                }
+            });
+            throw new Error('model not available');
+        }
+        if (!res.ok)
+            throw new Error(`HuggingFace HTTP ${res.status}: ${await res.text()}`);
+        // HF returns an array: [{ generated_text: "..." }]
+        const data = await res.json();
+        return data?.[0]?.generated_text ?? '';
+    }
+    // Groq, OpenRouter, LM Studio, vLLM — all speak OpenAI chat format
+    async callOpenAiFormat(baseUrl, apiKey, model, user, provider, system = SYSTEM_PROMPT) {
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        if (apiKey)
+            headers['Authorization'] = `Bearer ${apiKey}`;
+        // OpenRouter needs these to track usage and show the app in their dashboard
         if (provider === 'openrouter') {
             headers['HTTP-Referer'] = 'https://github.com/your-org/codesec';
-            headers['X-Title'] = 'CodeSec';
+            headers['X-Title'] = 'CodeSec VS Code Extension';
         }
-        const res = await fetch(`${url}/v1/chat/completions`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ model, temperature: 0.1, max_tokens: 2048,
-                messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+        const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model,
+                temperature: 0.1,
+                max_tokens: 2048,
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user },
+                ],
+            }),
         });
         if (!res.ok)
-            throw new Error(`${provider} ${res.status}: ${await res.text()}`);
+            throw new Error(`${provider} HTTP ${res.status}: ${await res.text()}`);
         const data = await res.json();
         return data?.choices?.[0]?.message?.content ?? '';
     }
-    async callAnthropic(url, key, model, user, system = SYSTEM) {
-        const res = await fetch(`${url}/v1/messages`, {
+    // Anthropic uses its own message format — different from OpenAI
+    async callAnthropic(baseUrl, apiKey, model, user, system = SYSTEM_PROMPT) {
+        const res = await fetch(`${baseUrl}/v1/messages`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model, max_tokens: 2048, system, messages: [{ role: 'user', content: user }] }),
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+                model,
+                max_tokens: 2048,
+                system,
+                messages: [{ role: 'user', content: user }],
+            }),
         });
         if (!res.ok)
-            throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+            throw new Error(`Anthropic HTTP ${res.status}: ${await res.text()}`);
         const data = await res.json();
         return data?.content?.find(b => b.type === 'text')?.text ?? '';
     }
-    // Pull the JSON array out of the response even if the model added surrounding prose
-    parse(raw) {
+    // Pull the JSON array out of the response even if the model wrapped it in prose
+    parseResponse(raw) {
         if (!raw)
             return [];
-        const json = (raw.match(/\[[\s\S]*\]/) ?? [])[0];
-        if (!json)
+        // Find the JSON array — model may have added explanation before or after it
+        const jsonMatch = raw.match(/\[[\s\S]*\]/);
+        if (!jsonMatch)
             return [];
         let parsed;
         try {
-            parsed = JSON.parse(json);
+            parsed = JSON.parse(jsonMatch[0]);
             if (!Array.isArray(parsed))
                 return [];
         }
         catch {
-            console.error('CodeSec: failed to parse AI JSON');
+            console.error('CodeSec: failed to parse AI JSON response');
             return [];
         }
         return parsed
             .filter(i => typeof i.line === 'number' && i.line >= 1 && i.message)
             .map((i, idx) => ({
-            id: `ai:${i.line}:${idx}`, message: i.message,
+            id: `ai:${i.line}:${idx}`,
+            message: i.message,
             severity: i.severity ?? 'warning',
             category: i.category ?? 'code-smell',
-            line: Math.max(0, i.line - 1), // convert from 1-indexed to 0-indexed
-            column: 0, endLine: Math.max(0, i.line - 1),
-            rule: 'ai:review', suggestion: i.suggestion, source: 'ai',
+            line: Math.max(0, i.line - 1), // AI returns 1-indexed, VS Code wants 0-indexed
+            column: 0,
+            endLine: Math.max(0, i.line - 1),
+            rule: 'ai:review',
+            suggestion: i.suggestion,
+            source: 'ai',
         }));
     }
+    // Providers that need a key configured before we even try calling them
+    requiresKey(provider) {
+        return ['groq', 'huggingface', 'openrouter', 'anthropic'].includes(provider);
+    }
+    // Friendly first-time setup message with a link to the signup page
+    showMissingKeyMessage(provider) {
+        const signupUrl = KEY_SIGNUP_URLS[provider];
+        const label = provider.charAt(0).toUpperCase() + provider.slice(1);
+        vscode.window.showWarningMessage(`CodeSec: ${label} needs a free API key. Get one and paste it in Settings → codeSec.aiApiKey.`, `Get ${label} Key`, 'Use Ollama Instead (no key)').then(choice => {
+            if (choice === `Get ${label} Key`) {
+                vscode.env.openExternal(vscode.Uri.parse(signupUrl));
+            }
+            if (choice === 'Use Ollama Instead (no key)') {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'codeSec.aiProvider');
+            }
+        });
+    }
+    // Friendly error messages so users know exactly what went wrong
     handleError(err, provider) {
         const msg = err instanceof Error ? err.message : String(err);
         if (provider === 'ollama' && msg.includes('ECONNREFUSED')) {
-            vscode.window.showErrorMessage('CodeSec: Ollama not running. Start it: ollama serve', 'Get Ollama')
-                .then(c => c && vscode.env.openExternal(vscode.Uri.parse('https://ollama.com')));
+            // Ollama server isn't running — give the exact command to start it
+            vscode.window.showErrorMessage('CodeSec: Ollama is not running. Start it first.', 'Run: ollama serve', 'Get Ollama').then(c => {
+                if (c === 'Get Ollama')
+                    vscode.env.openExternal(vscode.Uri.parse('https://ollama.com'));
+            });
         }
         else if (msg.includes('401')) {
-            vscode.window.showErrorMessage(`CodeSec: Invalid API key for ${provider}.`);
+            vscode.window.showErrorMessage(`CodeSec: Invalid API key for ${provider}. Check Settings → codeSec.aiApiKey.`);
         }
         else if (msg.includes('429')) {
-            vscode.window.showWarningMessage(`CodeSec: Rate limit hit (${provider}).`);
+            vscode.window.showWarningMessage(`CodeSec: Rate limit hit on ${provider} — skipping AI analysis this time.`);
+        }
+        else if (msg.includes('model loading') || msg.includes('model not found') || msg.includes('model not available')) {
+            // Already showed a specific message in the calling method — don't double-notify
         }
         else {
-            console.error(`CodeSec AI [${provider}]:`, msg);
+            console.error(`CodeSec AI error [${provider}]:`, msg);
         }
     }
 }

@@ -75,7 +75,14 @@ class ConfigManager {
     }
     // Which programming languages we should analyze
     getLanguages() {
-        return this.cfg().get('languages') ?? ['javascript', 'typescript', 'python', 'java'];
+        return this.cfg().get('languages') ?? [
+            'javascript',
+            'javascriptreact',
+            'typescript',
+            'typescriptreact',
+            'python',
+            'java',
+        ];
     }
     // Trigger analysis automatically whenever the user saves
     shouldAnalyzeOnSave() {
