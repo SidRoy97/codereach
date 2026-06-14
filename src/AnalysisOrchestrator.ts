@@ -114,7 +114,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
       }
     } catch (e) {
       // AI failure never breaks static results
-      console.error('CodeSec: AI phase error', e);
+      console.error('Codescape: AI phase error', e);
     }
   }
 

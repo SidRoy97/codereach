@@ -30,7 +30,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
     // Register the fix command — fires when user clicks "Apply Fix"
     this.disposables.push(
       vscode.commands.registerCommand(
-        'codeSec.fixWithAi',
+        'codescape.fixWithAi',
         (doc: vscode.TextDocument, issue: Issue, range: vscode.Range) =>
           this.applyFix(doc, issue, range)
       )
@@ -39,7 +39,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
     // Register the explain command — opens a side panel
     this.disposables.push(
       vscode.commands.registerCommand(
-        'codeSec.explainIssue',
+        'codescape.explainIssue',
         (doc: vscode.TextDocument, issue: Issue) =>
           this.explainIssue(doc, issue)
       )
@@ -55,8 +55,8 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
     const actions: vscode.CodeAction[] = [];
 
     for (const diag of context.diagnostics) {
-      // Only handle diagnostics that CodeSec created
-      if (!diag.source?.startsWith('CodeSec')) continue;
+      // Only handle diagnostics that Codescape created
+      if (!diag.source?.startsWith('Codescape')) continue;
 
       // Find the matching Issue object for this diagnostic line
       const result = this.store.get(document.uri);
@@ -68,14 +68,14 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
         `🔧 Fix: ${issue.message.slice(0, 55)}…`,
         vscode.CodeActionKind.QuickFix
       );
-      fix.command     = { command: 'codeSec.fixWithAi', title: 'Fix with AI', arguments: [document, issue, diag.range] };
+      fix.command     = { command: 'codescape.fixWithAi', title: 'Fix with AI', arguments: [document, issue, diag.range] };
       fix.diagnostics = [diag];
       fix.isPreferred = true;
       actions.push(fix);
 
       // Explain action — opens a webview panel beside the editor
       const explain       = new vscode.CodeAction('💡 Explain: Why is this an issue?', vscode.CodeActionKind.Empty);
-      explain.command     = { command: 'codeSec.explainIssue', title: 'Explain issue', arguments: [document, issue] };
+      explain.command     = { command: 'codescape.explainIssue', title: 'Explain issue', arguments: [document, issue] };
       explain.diagnostics = [diag];
       actions.push(explain);
     }
@@ -100,26 +100,26 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
     ].filter(Boolean).join('\n');
 
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'CodeSec: Generating fix…', cancellable: false },
+      { location: vscode.ProgressLocation.Notification, title: 'Codescape: Generating fix…', cancellable: false },
       async () => {
         const fixed = await this.scanner.generateText(FIX_PROMPT, prompt);
 
         if (!fixed) {
-          vscode.window.showWarningMessage('CodeSec: AI could not generate a fix.');
+          vscode.window.showWarningMessage('Codescape: AI could not generate a fix.');
           return;
         }
 
         // Always ask before touching code
         const editor = await vscode.window.showTextDocument(doc);
         const choice = await vscode.window.showInformationMessage(
-          'CodeSec: Fix ready — apply it?',
+          'Codescape: Fix ready — apply it?',
           'Apply Fix',
           'Preview Diff',
         );
 
         if (choice === 'Apply Fix') {
           await editor.edit(b => b.replace(ctxRange, fixed));
-          vscode.window.showInformationMessage('CodeSec: ✅ Fix applied.');
+          vscode.window.showInformationMessage('Codescape: ✅ Fix applied.');
         } else if (choice === 'Preview Diff') {
           await this.showDiff(doc, snippet, fixed, start);
         }
@@ -142,7 +142,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
       'vscode.diff',
       origUri,
       fixedUri,
-      `CodeSec Fix Preview — ${doc.fileName.split('/').pop()}`,
+      `Codescape Fix Preview — ${doc.fileName.split('/').pop()}`,
     );
 
     // Clean up the content provider after 30 seconds
@@ -163,11 +163,11 @@ export class CodeActionsProvider implements vscode.CodeActionProvider, vscode.Di
     ].join('\n');
 
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'CodeSec: Generating explanation…', cancellable: false },
+      { location: vscode.ProgressLocation.Notification, title: 'Codescape: Generating explanation…', cancellable: false },
       async () => {
         const text = await this.scanner.generateText(EXPLAIN_PROMPT, prompt);
         if (!text) {
-          vscode.window.showWarningMessage('CodeSec: Could not generate explanation.');
+          vscode.window.showWarningMessage('Codescape: Could not generate explanation.');
           return;
         }
         ExplainPanel.show(issue, text);
@@ -190,8 +190,8 @@ class ExplainPanel {
       this.panel.reveal();
     } else {
       this.panel = vscode.window.createWebviewPanel(
-        'codeSec.explain',
-        'CodeSec: Explanation',
+        'codescape.explain',
+        'Codescape: Explanation',
         vscode.ViewColumn.Beside,
         { enableScripts: false },
       );

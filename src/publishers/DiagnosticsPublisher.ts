@@ -10,8 +10,8 @@ const ICONS: Record<IssueCategory, string> = {
 // Single job: take a FileAnalysisResult and show squiggles in the editor
 export class DiagnosticsPublisher implements IResultPresenter, vscode.Disposable {
 
-  // One collection per extension — named "CodeSec" in the Problems panel
-  private collection = vscode.languages.createDiagnosticCollection('CodeSec');
+  // One collection per extension — named "Codescape" in the Problems panel
+  private collection = vscode.languages.createDiagnosticCollection('Codescape');
 
   // Push issues for one file into the Problems panel
   present(result: FileAnalysisResult): void {
@@ -47,7 +47,7 @@ export class DiagnosticsPublisher implements IResultPresenter, vscode.Disposable
     const diag = new vscode.Diagnostic(range, msg, toVsCodeSeverity(issue.severity));
 
     // Source label shown in Problems panel — AI issues get a different label
-    diag.source = issue.source === 'ai' ? 'CodeSec (AI)' : 'CodeSec';
+    diag.source = issue.source === 'ai' ? 'Codescape (AI)' : 'Codescape';
     diag.code   = issue.rule;
     return diag;
   }

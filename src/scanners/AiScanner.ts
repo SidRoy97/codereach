@@ -54,7 +54,7 @@ export class AiScanner implements IScanner {
 
     // Skip very large files — too slow and too many tokens
     if (document.getText().length > 60_000) {
-      vscode.window.showWarningMessage('CodeSec: File >60KB — skipping AI scan.');
+      vscode.window.showWarningMessage('Codescape: File >60KB — skipping AI scan.');
       return [];
     }
 
@@ -131,7 +131,7 @@ export class AiScanner implements IScanner {
     // Model not pulled yet — give a specific actionable error
     if (res.status === 404) {
       vscode.window.showErrorMessage(
-        `CodeSec: Ollama model "${model}" not found.`,
+        `Codescape: Ollama model "${model}" not found.`,
         `Run: ollama pull ${model}`
       );
       throw new Error('model not found');
@@ -179,14 +179,14 @@ export class AiScanner implements IScanner {
     if (res.status === 503) {
       const body = await res.json() as { estimated_time?: number };
       const wait = Math.ceil(body.estimated_time ?? 20);
-      vscode.window.showWarningMessage(`CodeSec: HuggingFace model is loading (~${wait}s). Try again shortly.`);
+      vscode.window.showWarningMessage(`Codescape: HuggingFace model is loading (~${wait}s). Try again shortly.`);
       throw new Error('model loading');
     }
 
     // Model name is wrong or gated — need to pick a different one
     if (res.status === 404 || res.status === 403) {
       vscode.window.showErrorMessage(
-        `CodeSec: HuggingFace model "${model}" not found or is gated.`,
+        `Codescape: HuggingFace model "${model}" not found or is gated.`,
         'Browse Free Models'
       ).then(c => {
         if (c === 'Browse Free Models') {
@@ -220,8 +220,8 @@ export class AiScanner implements IScanner {
 
     // OpenRouter needs these to track usage and show the app in their dashboard
     if (provider === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://github.com/your-org/codesec';
-      headers['X-Title']      = 'CodeSec VS Code Extension';
+      headers['HTTP-Referer'] = 'https://github.com/your-org/codescape';
+      headers['X-Title']      = 'Codescape VS Code Extension';
     }
 
     const res = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -288,7 +288,7 @@ export class AiScanner implements IScanner {
       parsed = JSON.parse(jsonMatch[0]);
       if (!Array.isArray(parsed)) return [];
     } catch {
-      console.error('CodeSec: failed to parse AI JSON response');
+      console.error('Codescape: failed to parse AI JSON response');
       return [];
     }
 
@@ -319,7 +319,7 @@ export class AiScanner implements IScanner {
     const label     = provider.charAt(0).toUpperCase() + provider.slice(1);
 
     vscode.window.showWarningMessage(
-      `CodeSec: ${label} needs a free API key. Get one and paste it in Settings → codeSec.aiApiKey.`,
+      `Codescape: ${label} needs a free API key. Get one and paste it in Settings → codescape.aiApiKey.`,
       `Get ${label} Key`,
       'Use Ollama Instead (no key)',
     ).then(choice => {
@@ -327,7 +327,7 @@ export class AiScanner implements IScanner {
         vscode.env.openExternal(vscode.Uri.parse(signupUrl));
       }
       if (choice === 'Use Ollama Instead (no key)') {
-        vscode.commands.executeCommand('workbench.action.openSettings', 'codeSec.aiProvider');
+        vscode.commands.executeCommand('workbench.action.openSettings', 'codescape.aiProvider');
       }
     });
   }
@@ -339,7 +339,7 @@ export class AiScanner implements IScanner {
     if (provider === 'ollama' && msg.includes('ECONNREFUSED')) {
       // Ollama server isn't running — give the exact command to start it
       vscode.window.showErrorMessage(
-        'CodeSec: Ollama is not running. Start it first.',
+        'Codescape: Ollama is not running. Start it first.',
         'Run: ollama serve',
         'Get Ollama',
       ).then(c => {
@@ -347,16 +347,16 @@ export class AiScanner implements IScanner {
       });
     } else if (msg.includes('401')) {
       vscode.window.showErrorMessage(
-        `CodeSec: Invalid API key for ${provider}. Check Settings → codeSec.aiApiKey.`
+        `Codescape: Invalid API key for ${provider}. Check Settings → codescape.aiApiKey.`
       );
     } else if (msg.includes('429')) {
       vscode.window.showWarningMessage(
-        `CodeSec: Rate limit hit on ${provider} — skipping AI analysis this time.`
+        `Codescape: Rate limit hit on ${provider} — skipping AI analysis this time.`
       );
     } else if (msg.includes('model loading') || msg.includes('model not found') || msg.includes('model not available')) {
       // Already showed a specific message in the calling method — don't double-notify
     } else {
-      console.error(`CodeSec AI error [${provider}]:`, msg);
+      console.error(`Codescape AI error [${provider}]:`, msg);
     }
   }
 }

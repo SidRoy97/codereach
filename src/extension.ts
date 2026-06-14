@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as path   from 'path';
+import * as path from 'path';
 
 // Analysis pipeline
 import { ConfigManager }        from './config/ConfigManager';
@@ -18,32 +18,42 @@ import { StatusBarManager }     from './publishers/StatusBarManager';
 import { DashboardProvider }    from './providers/DashboardProvider';
 import { CodeActionsProvider }  from './providers/CodeActionsProvider';
 
-// Context features
-import { SymbolIndexer }        from './context/SymbolIndexer';
-import { BlastRadiusAnalyzer }  from './context/BlastRadiusAnalyzer';
+// Context / AI assist
 import { FileSummarizer }       from './context/FileSummarizer';
 import { ContextPicker }        from './context/ContextPicker';
 import { AiContextGenerator }   from './context/AiContextGenerator';
 
+// Code graph feature
+import { LanguageParser }       from './graph/LanguageParser';
+import { CodeGraphBuilder }     from './graph/CodeGraphBuilder';
+import { ImpactAnalyzer }       from './graph/ImpactAnalyzer';
+import { GraphPanel }           from './graph/GraphPanel';
+import { ImpactCodeLens }       from './graph/ImpactCodeLens';
+
 import { FileAnalysisResult }   from './types';
 
-export function activate(context: vscode.ExtensionContext): void {
-  console.log('CodeSec: activating…');
+// Languages Codescape analyzes and graphs.
+const SUPPORTED_LANGUAGES = [
+  'javascript', 'javascriptreact',
+  'typescript', 'typescriptreact',
+  'python', 'java',
+];
 
+export function activate(context: vscode.ExtensionContext): void {
+  console.log('Codescape: activating…');
   try {
     activateInternal(context);
-    console.log('CodeSec: activated successfully');
+    console.log('Codescape: activated successfully');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('CodeSec: activation failed —', msg);
-    vscode.window.showErrorMessage(`CodeSec failed to start: ${msg}`);
+    console.error('Codescape: activation failed —', msg);
+    vscode.window.showErrorMessage(`Codescape failed to start: ${msg}`);
   }
 }
 
 function activateInternal(context: vscode.ExtensionContext): void {
 
-  // ── Analysis pipeline ─────────────────────────────────────────────────────
-
+  // --- Analysis pipeline ---
   const config     = new ConfigManager();
   const store      = new ResultStore();
   const static_    = new StaticScanner();
@@ -54,165 +64,125 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const statusBar  = new StatusBarManager(store);
   const dashboard  = new DashboardProvider(store);
 
-  // Called after every analysis — update all three UI surfaces
+  // After every analysis: update squiggles, status bar, dashboard.
   const onComplete = (result: FileAnalysisResult): void => {
-    try { diagPub.present(result); } catch (e) { console.error('CodeSec diagPub error', e); }
-    try { statusBar.render();      } catch (e) { console.error('CodeSec statusBar error', e); }
-    try { dashboard.refresh();     } catch (e) { console.error('CodeSec dashboard error', e); }
+    try { diagPub.present(result); } catch (e) { console.error('Codescape diagPub error', e); }
+    try { statusBar.render();      } catch (e) { console.error('Codescape statusBar error', e); }
+    try { dashboard.refresh();     } catch (e) { console.error('Codescape dashboard error', e); }
   };
 
   const orchestrator = new AnalysisOrchestrator(
-    store, config, static_, complexity, duplicate, ai, onComplete
+    store, config, static_, complexity, duplicate, ai, onComplete,
   );
 
   const codeActions = new CodeActionsProvider(store, ai);
 
-  // ── Context features ──────────────────────────────────────────────────────
+  // --- Code graph feature ---
+  const parser       = new LanguageParser(context.extensionPath);
+  const graphBuilder = new CodeGraphBuilder(parser);
+  const graphPanel   = new GraphPanel(context.extensionUri, () => graphBuilder.getGraph());
+  const codeLens     = new ImpactCodeLens(() => graphBuilder.getGraph());
 
-  const symbolIndexer  = new SymbolIndexer();
-  const blastAnalyzer  = new BlastRadiusAnalyzer();
-  const fileSummarizer = new FileSummarizer(ai, context);
-  const contextPicker  = new ContextPicker(symbolIndexer, blastAnalyzer, fileSummarizer);
-  const aiContextGen   = new AiContextGenerator(symbolIndexer, blastAnalyzer, fileSummarizer);
+  // --- Context / AI assist (now graph-backed) ---
+  const summarizer   = new FileSummarizer(ai, context);
+  const contextPicker = new ContextPicker(() => graphBuilder.getGraph(), summarizer);
+  const aiContextGen  = new AiContextGenerator(() => graphBuilder.getGraph(), summarizer);
 
-  // Second status bar item showing blast radius of the active file
+  // Blast-radius status bar item (now computed from the graph).
   const blastBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-  blastBar.command = 'codeSec.showBlastRadius';
-  blastBar.tooltip = 'Click to see which files depend on this one';
+  blastBar.command = 'codescape.showBlastRadius';
+  blastBar.tooltip = 'Click to see what depends on this file';
   context.subscriptions.push(blastBar);
 
-  // ── Register providers ────────────────────────────────────────────────────
-
+  // --- Register providers ---
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(DashboardProvider.viewId, dashboard)
+    vscode.window.registerWebviewViewProvider(DashboardProvider.viewId, dashboard),
   );
+
+  const languageSelector = SUPPORTED_LANGUAGES.map(language => ({ language }));
 
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider(
-      [
-        { language: 'javascript'      },
-        { language: 'typescript'      },
-        { language: 'javascriptreact' },
-        { language: 'typescriptreact' },
-        { language: 'python'          },
-        { language: 'java'            },
-      ],
+      languageSelector,
       codeActions,
-      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix, vscode.CodeActionKind.Empty] }
-    )
+      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix, vscode.CodeActionKind.Empty] },
+    ),
   );
 
-  // ── Helper: analyze a document and update blast bar ───────────────────────
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(languageSelector, codeLens),
+  );
 
-  // Single function used by all triggers so the logic is never duplicated
-  const analyzeAndUpdateBlast = async (
-    document: vscode.TextDocument,
-    debounceMs = 0,
-  ): Promise<void> => {
-    // Only analyze real files in supported languages
+  // --- Helper: analyze a document if it is a supported file ---
+  const analyzeDocument = async (document: vscode.TextDocument, debounceMs = 0): Promise<void> => {
     if (document.uri.scheme !== 'file') return;
-    if (!isSupportedLanguage(document.languageId)) return;
-
+    if (!SUPPORTED_LANGUAGES.includes(document.languageId)) return;
     try {
       await orchestrator.analyze(document, debounceMs);
     } catch (e) {
-      console.error('CodeSec analysis error', e);
+      console.error('Codescape analysis error', e);
     }
   };
 
-  // Update the blast radius status bar for the currently visible file
-  const updateBlastBar = async (document: vscode.TextDocument): Promise<void> => {
-    if (document.uri.scheme !== 'file') {
-      blastBar.hide();
-      return;
+  // --- Helper: update the blast-radius bar from the graph ---
+  const updateBlastBar = (document: vscode.TextDocument): void => {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root || document.uri.scheme !== 'file') { blastBar.hide(); return; }
+
+    const relFile  = path.relative(root, document.uri.fsPath);
+    const analyzer = new ImpactAnalyzer(graphBuilder.getGraph());
+    const count    = analyzer.blastRadiusForFile(relFile);
+
+    if (count === 0) {
+      blastBar.text = '$(check) No dependents';
+      blastBar.backgroundColor = undefined;
+    } else if (count <= 3) {
+      blastBar.text = `$(info) ${count} dependent(s)`;
+      blastBar.backgroundColor = undefined;
+    } else if (count <= 8) {
+      blastBar.text = `$(warning) ${count} dependents`;
+      blastBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else {
+      blastBar.text = `$(error) HIGH: ${count} dependents`;
+      blastBar.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     }
-
-    try {
-      const node = await blastAnalyzer.getBlastRadius(document.uri);
-
-      if (node.blastRadius === 0) {
-        blastBar.text            = '$(check) No dependents';
-        blastBar.backgroundColor = undefined;
-        blastBar.tooltip         = 'No files import this one';
-      } else if (node.blastRadius <= 3) {
-        blastBar.text            = `$(info) ${node.blastRadius} dependent(s)`;
-        blastBar.backgroundColor = undefined;
-        blastBar.tooltip         = `${node.blastRadius} file(s) import this — click to see which`;
-      } else if (node.blastRadius <= 8) {
-        blastBar.text            = `$(warning) ${node.blastRadius} dependents`;
-        blastBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        blastBar.tooltip         = `Medium blast radius — ${node.blastRadius} files depend on this`;
-      } else {
-        blastBar.text            = `$(error) HIGH: ${node.blastRadius} dependents`;
-        blastBar.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        blastBar.tooltip         = `High blast radius — ${node.blastRadius} files depend on this`;
-      }
-
-      blastBar.show();
-    } catch {
-      // Graph not built yet — hide silently
-      blastBar.text = '';
-      blastBar.hide();
-    }
+    blastBar.show();
   };
 
-  // ── Analysis commands ─────────────────────────────────────────────────────
-
-  // Manually analyze the active file — shows a progress notification
+  // --- Analysis commands ---
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.analyzeFile', async () => {
+    vscode.commands.registerCommand('codescape.analyzeFile', async () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('CodeSec: Open a file first.');
-        return;
-      }
+      if (!editor) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return; }
 
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'CodeSec: Analyzing…', cancellable: false },
+        { location: vscode.ProgressLocation.Notification, title: 'Codescape: Analyzing…' },
         async () => {
-          try {
-            const result = await orchestrator.analyze(editor.document);
-            if (!result) {
-              vscode.window.showInformationMessage(
-                `CodeSec: ${editor.document.languageId} is not a supported language.`
-              );
-              return;
-            }
-            const n    = result.issues.length;
-            const file = vscode.workspace.asRelativePath(editor.document.uri);
-            vscode.window.showInformationMessage(
-              n === 0
-                ? `CodeSec: ✅ No issues in ${file}`
-                : `CodeSec: ${n} issue(s) found in ${file}`
-            );
-          } catch (e) {
-            vscode.window.showErrorMessage(`CodeSec: Analysis failed — ${e}`);
+          const result = await orchestrator.analyze(editor.document);
+          if (!result) {
+            vscode.window.showInformationMessage(`Codescape: ${editor.document.languageId} is not supported.`);
+            return;
           }
-        }
+          const n = result.issues.length;
+          const file = vscode.workspace.asRelativePath(editor.document.uri);
+          vscode.window.showInformationMessage(
+            n === 0 ? `Codescape: No issues in ${file}` : `Codescape: ${n} issue(s) in ${file}`,
+          );
+        },
       );
-    })
+    }),
   );
 
-  // Scan every supported file in the workspace
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.analyzeWorkspace', async () => {
+    vscode.commands.registerCommand('codescape.analyzeWorkspace', async () => {
       const exts = config.getLanguages().flatMap(langToExts).join(',');
       const uris = await vscode.workspace.findFiles(
-        `**/*.{${exts}}`,
-        '{**/node_modules/**,**/dist/**,**/out/**}'
+        `**/*.{${exts}}`, '{**/node_modules/**,**/dist/**,**/out/**}',
       );
-
-      if (!uris.length) {
-        vscode.window.showWarningMessage('CodeSec: No supported files found in workspace.');
-        return;
-      }
+      if (!uris.length) { vscode.window.showWarningMessage('Codescape: No supported files found.'); return; }
 
       await vscode.window.withProgress(
-        {
-          location:    vscode.ProgressLocation.Notification,
-          title:       `CodeSec: Scanning ${uris.length} files…`,
-          cancellable: true,
-        },
+        { location: vscode.ProgressLocation.Notification, title: `Codescape: Scanning ${uris.length} files…`, cancellable: true },
         async (progress, token) => {
           for (let i = 0; i < uris.length; i++) {
             if (token.isCancellationRequested) break;
@@ -220,315 +190,206 @@ function activateInternal(context: vscode.ExtensionContext): void {
               const doc = await vscode.workspace.openTextDocument(uris[i]);
               await orchestrator.analyze(doc);
             } catch { /* skip unreadable files */ }
-            progress.report({
-              message:   `${i + 1}/${uris.length}`,
-              increment: (1 / uris.length) * 100,
-            });
+            progress.report({ message: `${i + 1}/${uris.length}`, increment: (1 / uris.length) * 100 });
           }
           const total = store.getAll().reduce((n, r) => n + r.issues.length, 0);
-          vscode.window.showInformationMessage(
-            `CodeSec: Done — ${total} issue(s) across ${store.getAll().length} files`
-          );
-        }
+          vscode.window.showInformationMessage(`Codescape: Done — ${total} issue(s) in ${store.getAll().length} files`);
+        },
       );
-    })
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.clearIssues', () => {
+    vscode.commands.registerCommand('codescape.clearIssues', () => {
       store.clear();
       diagPub.clearAll();
       statusBar.render();
       dashboard.refresh();
-      vscode.window.showInformationMessage('CodeSec: All issues cleared.');
-    })
+      vscode.window.showInformationMessage('Codescape: All issues cleared.');
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.openDashboard', () => {
-      vscode.commands.executeCommand('workbench.view.extension.codeSec');
-    })
+    vscode.commands.registerCommand('codescape.openDashboard', () => {
+      vscode.commands.executeCommand('workbench.view.extension.codescape');
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.generateConfig', () => {
+    vscode.commands.registerCommand('codescape.generateConfig', () => {
       generateProjectConfig();
-    })
+    }),
   );
 
-  // ── Context commands ──────────────────────────────────────────────────────
-
+  // --- Context / AI assist commands ---
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.buildSymbolIndex', async () => {
-      await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'CodeSec: Building symbol index…', cancellable: false },
-        async () => {
-          try {
-            const symbols = await symbolIndexer.buildIndex();
-            vscode.window.showInformationMessage(
-              `CodeSec: Indexed ${symbols.length} symbols.`
-            );
-          } catch (e) {
-            vscode.window.showErrorMessage(`CodeSec: Symbol index failed — ${e}`);
-          }
-        }
-      );
-    })
+    vscode.commands.registerCommand('codescape.summarizeFiles', async () => {
+      try { await summarizer.summarizeWorkspace(); }
+      catch (e) { vscode.window.showErrorMessage(`Codescape: Summarize failed — ${e}`); }
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.copyAiContext', async () => {
+    vscode.commands.registerCommand('codescape.generateAiContext', async () => {
+      try { await aiContextGen.generate(); }
+      catch (e) { vscode.window.showErrorMessage(`Codescape: AI context generation failed — ${e}`); }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.copyAiContext', async () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('CodeSec: Open a file first.');
-        return;
+      if (!editor) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return; }
+      try {
+        const text = await contextPicker.buildContext(editor);
+        await vscode.env.clipboard.writeText(text);
+        vscode.window.showInformationMessage(`Codescape: Context copied (~${Math.round(text.length / 4)} tokens).`);
+      } catch (e) {
+        vscode.window.showErrorMessage(`Codescape: Context build failed — ${e}`);
       }
-      await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'CodeSec: Building context…', cancellable: false },
-        async () => {
-          try {
-            const text   = await contextPicker.buildContext(editor);
-            await vscode.env.clipboard.writeText(text);
-            const tokens = Math.round(text.length / 4);
-            vscode.window.showInformationMessage(
-              `CodeSec: Context copied (~${tokens} tokens). Paste into any AI tool.`
-            );
-          } catch (e) {
-            vscode.window.showErrorMessage(`CodeSec: Context build failed — ${e}`);
-          }
-        }
-      );
-    })
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.copyLightContext', async () => {
+    vscode.commands.registerCommand('codescape.copyLightContext', async () => {
+      try {
+        const text = await contextPicker.buildLightContext();
+        await vscode.env.clipboard.writeText(text);
+        vscode.window.showInformationMessage(`Codescape: Light context copied (~${Math.round(text.length / 4)} tokens).`);
+      } catch (e) {
+        vscode.window.showErrorMessage(`Codescape: Light context failed — ${e}`);
+      }
+    }),
+  );
+
+  // --- Code graph commands ---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.buildGraph', async () => {
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'CodeSec: Building light context…', cancellable: false },
+        { location: vscode.ProgressLocation.Notification, title: 'Codescape: Building code graph…' },
         async () => {
-          try {
-            const text   = await contextPicker.buildLightContext();
-            await vscode.env.clipboard.writeText(text);
-            const tokens = Math.round(text.length / 4);
-            vscode.window.showInformationMessage(
-              `CodeSec: Light context copied (~${tokens} tokens).`
-            );
-          } catch (e) {
-            vscode.window.showErrorMessage(`CodeSec: Light context failed — ${e}`);
-          }
-        }
+          await graphBuilder.build();
+          codeLens.refresh();
+        },
       );
-    })
+      const n = graphBuilder.getGraph().nodes.length;
+      vscode.window.showInformationMessage(`Codescape: Code graph ready — ${n} symbol(s) indexed.`);
+    }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.showBlastRadius', async () => {
+    vscode.commands.registerCommand('codescape.exportGraph', async () => {
+      await graphBuilder.build();
+      const uri = await graphBuilder.exportToFile();
+      if (uri) {
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc);
+      }
+    }),
+  );
+
+  // Opened by the CodeLens above each function.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.showImpact', (nodeId: string) => {
+      graphPanel.show(nodeId);
+    }),
+  );
+
+  // Show which files depend on the active file.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.showBlastRadius', () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('CodeSec: Open a file first.');
-        return;
-      }
-      try {
-        const node = await blastAnalyzer.getBlastRadius(editor.document.uri);
-        const rel  = vscode.workspace.asRelativePath(editor.document.uri);
+      if (!editor) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return; }
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!root) return;
 
-        if (node.blastRadius === 0) {
-          vscode.window.showInformationMessage(
-            `CodeSec: "${path.basename(rel)}" has no dependents — safe to change freely.`
-          );
-          return;
-        }
+      const relFile  = path.relative(root, editor.document.uri.fsPath);
+      const analyzer = new ImpactAnalyzer(graphBuilder.getGraph());
+      const count    = analyzer.blastRadiusForFile(relFile);
 
-        const items = [
-          {
-            label:       `$(warning) ${node.blastRadius} file(s) depend on ${path.basename(rel)}`,
-            description: 'select a file below to open it',
-            file:        '',
-          },
-          ...node.importedBy.map(f => ({
-            label:       `$(file) ${f}`,
-            description: 'imports this file',
-            file:        f,
-          })),
-        ];
-
-        const pick = await vscode.window.showQuickPick(items, {
-          title:       `Blast Radius: ${rel}`,
-          placeHolder: 'Select a dependent file to open it',
-        });
-
-        if (pick?.file) {
-          const folders = vscode.workspace.workspaceFolders;
-          if (!folders) return;
-          try {
-            const fullPath = path.join(folders[0].uri.fsPath, pick.file);
-            const doc      = await vscode.workspace.openTextDocument(fullPath);
-            await vscode.window.showTextDocument(doc);
-          } catch {
-            vscode.window.showWarningMessage(`CodeSec: Could not open ${pick.file}`);
-          }
-        }
-      } catch (e) {
-        vscode.window.showErrorMessage(`CodeSec: Blast radius failed — ${e}`);
-      }
-    })
+      vscode.window.showInformationMessage(
+        count === 0
+          ? `Codescape: "${path.basename(relFile)}" has no dependents — safe to change.`
+          : `Codescape: changing "${path.basename(relFile)}" affects ${count} other file(s).`,
+      );
+    }),
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.generateAiContext', async () => {
-      try {
-        await aiContextGen.generate();
-      } catch (e) {
-        vscode.window.showErrorMessage(`CodeSec: AI context generation failed — ${e}`);
-      }
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('codeSec.summarizeFiles', async () => {
-      try {
-        await fileSummarizer.summarizeWorkspace();
-      } catch (e) {
-        vscode.window.showErrorMessage(`CodeSec: File summarization failed — ${e}`);
-      }
-    })
-  );
-
-  // ── Event listeners ───────────────────────────────────────────────────────
-
-  // Trigger 1: file is saved — full analysis including AI
+  // --- Event listeners ---
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async doc => {
-      if (config.shouldAnalyzeOnSave()) {
-        await analyzeAndUpdateBlast(doc);
-      }
-      // Re-index symbols so the index stays current after changes
-      try { await symbolIndexer.reindexFile(doc.uri); } catch { /* non-critical */ }
-    })
+      if (config.shouldAnalyzeOnSave()) await analyzeDocument(doc);
+    }),
   );
 
-  // Trigger 2: user is typing — static rules only, debounced 1.5s
-  // AI is skipped here to avoid hammering the model on every keystroke
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument(async e => {
       if (e.contentChanges.length === 0) return;
-      await analyzeAndUpdateBlast(e.document, 1500);
-    })
+      await analyzeDocument(e.document, 1500);
+    }),
   );
 
-  // Trigger 3: a document is opened (tab opened, file dragged in, etc.)
-  // This is the key fix — fires immediately when any file becomes available
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(async doc => {
-      // Small delay so VS Code finishes rendering the editor before we run
-      setTimeout(async () => {
-        await analyzeAndUpdateBlast(doc);
-      }, 300);
-    })
+      setTimeout(() => analyzeDocument(doc), 300);
+    }),
   );
 
-  // Trigger 4: user switches to a different editor tab
-  // Updates both analysis and blast bar for the newly focused file
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(async editor => {
-      if (!editor) {
-        blastBar.hide();
-        return;
-      }
-
-      // Run analysis on the newly focused file
-      await analyzeAndUpdateBlast(editor.document);
-
-      // Update blast radius bar for this file
-      await updateBlastBar(editor.document);
-    })
+      if (!editor) { blastBar.hide(); return; }
+      await analyzeDocument(editor.document);
+      updateBlastBar(editor.document);
+    }),
   );
 
-  // Trigger 5: new editor groups opened (split view, etc.)
-  // Ensures all panes analyze their file, not just the focused one
   context.subscriptions.push(
     vscode.window.onDidChangeVisibleTextEditors(async editors => {
       for (const editor of editors) {
-        // Only analyze files we haven't seen yet — avoid re-running on already-analyzed files
-        const existing = store.get(editor.document.uri);
-        if (!existing) {
-          await analyzeAndUpdateBlast(editor.document);
-        }
+        if (!store.get(editor.document.uri)) await analyzeDocument(editor.document);
       }
-    })
+    }),
   );
 
-  // Trigger 6: file is closed — remove stale results
   context.subscriptions.push(
     vscode.workspace.onDidCloseTextDocument(doc => {
-      try {
-        store.remove(doc.uri);
-        diagPub.clear(doc.uri);
-        statusBar.render();
-        dashboard.refresh();
-      } catch { /* non-critical */ }
-    })
+      store.remove(doc.uri);
+      diagPub.clear(doc.uri);
+      statusBar.render();
+      dashboard.refresh();
+    }),
   );
 
-  // ── Startup: analyze everything already open ──────────────────────────────
-
-  // Analyze all files visible when the extension first loads
-  // This covers the case where VS Code restores the previous session with open tabs
-  const analyzeAllVisible = async (): Promise<void> => {
-    const editors = vscode.window.visibleTextEditors;
-
-    if (editors.length === 0) return;
-
-    // Analyze all open editors in parallel — each has its own debounce
-    await Promise.all(
-      editors.map(editor =>
-        analyzeAndUpdateBlast(editor.document).catch(() => {})
-      )
-    );
-
-    // Update blast bar for the currently active file
-    const active = vscode.window.activeTextEditor;
-    if (active) {
-      await updateBlastBar(active.document);
+  // --- Startup ---
+  // Analyze already-open files shortly after load.
+  setTimeout(() => {
+    for (const editor of vscode.window.visibleTextEditors) {
+      analyzeDocument(editor.document).catch(() => {});
     }
-  };
+    const active = vscode.window.activeTextEditor;
+    if (active) updateBlastBar(active.document);
+  }, 200);
 
-  // Small delay on startup — let VS Code finish initializing before we start analyzing
+  // Build the code graph in the background, then refresh the CodeLens
+  // and the blast bar so they show real numbers.
   setTimeout(() => {
-    analyzeAllVisible().catch(() => {});
-  }, 100);
+    graphBuilder.build()
+      .then(() => {
+        codeLens.refresh();
+        const active = vscode.window.activeTextEditor;
+        if (active) updateBlastBar(active.document);
+      })
+      .catch(() => {});
+  }, 2500);
 
-  // Build symbol index silently in background after startup
-  // 3s delay so we don't compete with the initial analysis
-  setTimeout(() => {
-    symbolIndexer.buildIndex().catch(() => {});
-  }, 2000);
-
-  // Register everything for cleanup on deactivation
-  context.subscriptions.push(
-    diagPub,
-    statusBar,
-    dashboard,
-    codeActions,
-    orchestrator,
-  );
+  context.subscriptions.push(diagPub, statusBar, dashboard, codeActions, orchestrator);
 }
 
 export function deactivate(): void {
-  console.log('CodeSec: deactivated');
+  console.log('Codescape: deactivated');
 }
 
-// Check if a language ID is one we support
-function isSupportedLanguage(languageId: string): boolean {
-  const supported = new Set([
-    'javascript', 'typescript',
-    'javascriptreact', 'typescriptreact',
-    'python', 'java',
-  ]);
-  return supported.has(languageId);
-}
-
-// Map VS Code language IDs to file extensions for workspace scan globs
+// Map VS Code language ids to file extensions for workspace scan globs.
 function langToExts(lang: string): string[] {
   const map: Record<string, string[]> = {
     javascript:      ['js', 'mjs'],
@@ -541,17 +402,14 @@ function langToExts(lang: string): string[] {
   return map[lang] ?? [lang];
 }
 
-// Write a starter .codesec.json to the workspace root
+// Write a starter .codescape.json to the workspace root.
 async function generateProjectConfig(): Promise<void> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders) {
-    vscode.window.showWarningMessage('CodeSec: No workspace open.');
-    return;
-  }
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) { vscode.window.showWarningMessage('Codescape: No workspace open.'); return; }
 
   const fs   = await import('fs');
   const path = await import('path');
-  const dest = path.join(folders[0].uri.fsPath, '.codesec.json');
+  const dest = path.join(root, '.codescape.json');
 
   const starter = {
     aiProvider:             'ollama',
@@ -566,7 +424,5 @@ async function generateProjectConfig(): Promise<void> {
   fs.writeFileSync(dest, JSON.stringify(starter, null, 2));
   const doc = await vscode.workspace.openTextDocument(dest);
   await vscode.window.showTextDocument(doc);
-  vscode.window.showInformationMessage(
-    'CodeSec: .codesec.json created — commit this to share settings with your team.'
-  );
+  vscode.window.showInformationMessage('Codescape: .codescape.json created.');
 }

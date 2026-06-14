@@ -1,43 +1,93 @@
 {
-  "name": "codecop",
-  "displayName": "CodeCop — AI Code Quality",
-  "description": "Real-time code quality, security analysis, and AI-powered fixes. Works with Ollama, Groq, HuggingFace, and more.",
+  "name": "codescape",
+  "displayName": "Codescape — AI Code Quality & Impact Graph",
+  "description": "Security, code quality, SOLID analysis, AI-powered fixes, and an interactive code impact graph. Works with Ollama, Groq, HuggingFace, and more.",
   "version": "0.1.0",
   "publisher": "SidRoy300497",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SidRoy97/codesec.git"
+    "url": "https://github.com/SidRoy97/codescape.git"
   },
-  "homepage": "https://github.com/SidRoy97/codesec",
+  "homepage": "https://github.com/SidRoy97/codescape",
   "bugs": {
-    "url": "https://github.com/SidRoy97/codesec/issues"
+    "url": "https://github.com/SidRoy97/codescape/issues"
   },
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Linters", "Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "icon": "media/icon.png",
   "contributes": {
     "commands": [
-      { "command": "codeSec.analyzeFile",      "title": "CodeSec: Analyze Current File" },
-      { "command": "codeSec.analyzeWorkspace", "title": "CodeSec: Analyze Entire Workspace" },
-      { "command": "codeSec.clearIssues",      "title": "CodeSec: Clear All Issues" },
-      { "command": "codeSec.openDashboard",    "title": "CodeSec: Open Dashboard" },
-      { "command": "codeSec.generateConfig",   "title": "CodeSec: Generate .codesec.json" },
-      { "command": "codeSec.fixWithAi",        "title": "CodeSec: Fix with AI" },
-      { "command": "codeSec.explainIssue",     "title": "CodeSec: Explain this Issue" },
-      { "command": "codeSec.buildSymbolIndex", "title": "CodeSec: Build Symbol Index" },
-      { "command": "codeSec.copyAiContext",    "title": "CodeSec: Copy AI Context for Selected Symbol" },
-      { "command": "codeSec.copyLightContext", "title": "CodeSec: Copy Light Context (Summaries Only)" },
-      { "command": "codeSec.showBlastRadius",  "title": "CodeSec: Show Blast Radius for Current File" },
-      { "command": "codeSec.generateAiContext","title": "CodeSec: Generate AI Context File (AGENTS.md)" },
-      { "command": "codeSec.summarizeFiles",   "title": "CodeSec: Summarize Project Files" }
+      {
+        "command": "codescape.analyzeFile",
+        "title": "Codescape: Analyze Current File"
+      },
+      {
+        "command": "codescape.analyzeWorkspace",
+        "title": "Codescape: Analyze Entire Workspace"
+      },
+      {
+        "command": "codescape.clearIssues",
+        "title": "Codescape: Clear All Issues"
+      },
+      {
+        "command": "codescape.openDashboard",
+        "title": "Codescape: Open Dashboard"
+      },
+      {
+        "command": "codescape.generateConfig",
+        "title": "Codescape: Generate .codescape.json"
+      },
+      {
+        "command": "codescape.fixWithAi",
+        "title": "Codescape: Fix with AI"
+      },
+      {
+        "command": "codescape.explainIssue",
+        "title": "Codescape: Explain this Issue"
+      },
+      {
+        "command": "codescape.copyAiContext",
+        "title": "Codescape: Copy AI Context for Selected Symbol"
+      },
+      {
+        "command": "codescape.copyLightContext",
+        "title": "Codescape: Copy Light Context (Summaries Only)"
+      },
+      {
+        "command": "codescape.generateAiContext",
+        "title": "Codescape: Generate AI Context File (AGENTS.md)"
+      },
+      {
+        "command": "codescape.summarizeFiles",
+        "title": "Codescape: Summarize Project Files"
+      },
+      {
+        "command": "codescape.buildGraph",
+        "title": "Codescape: Build Code Graph"
+      },
+      {
+        "command": "codescape.exportGraph",
+        "title": "Codescape: Export Code Graph (codescape.json)"
+      },
+      {
+        "command": "codescape.showBlastRadius",
+        "title": "Codescape: Show Blast Radius for Current File"
+      }
     ],
     "configuration": {
-      "title": "CodeSec",
+      "title": "Codescape",
       "properties": {
-        "codeSec.aiProvider": {
+        "codescape.aiProvider": {
           "type": "string",
           "default": "ollama",
           "enum": [
@@ -58,47 +108,47 @@
           ],
           "markdownDescription": "Which AI backend to use.\n\n**Free options:** `ollama` (no account), `groq` (free account), `huggingface` (free account)"
         },
-        "codeSec.aiModel": {
+        "codescape.aiModel": {
           "type": "string",
           "default": "",
           "markdownDescription": "Model name. Leave blank for the recommended default.\n\n**Ollama:** `qwen2.5-coder:7b` `llama3.2` `codellama`\n\n**Groq:** `qwen-2.5-coder-32b` `llama-3.3-70b-versatile`\n\n**HuggingFace:** `Qwen/Qwen2.5-Coder-7B-Instruct`"
         },
-        "codeSec.aiApiKey": {
+        "codescape.aiApiKey": {
           "type": "string",
           "default": "",
           "markdownDescription": "API key for cloud providers.\n\n- **Ollama / LM Studio:** leave empty\n- **Groq:** free key at https://console.groq.com\n- **HuggingFace:** free token at https://huggingface.co/settings/tokens\n- **OpenRouter:** free key at https://openrouter.ai"
         },
-        "codeSec.aiBaseUrl": {
+        "codescape.aiBaseUrl": {
           "type": "string",
           "default": "",
           "description": "Override the base URL for the chosen provider. Leave blank to use the default."
         },
-        "codeSec.analyzeOnSave": {
+        "codescape.analyzeOnSave": {
           "type": "boolean",
           "default": true,
           "description": "Automatically analyze the file every time you save."
         },
-        "codeSec.enableAiAnalysis": {
+        "codescape.enableAiAnalysis": {
           "type": "boolean",
           "default": true,
           "description": "Run AI deep analysis in addition to static rules."
         },
-        "codeSec.enableStaticAnalysis": {
+        "codescape.enableStaticAnalysis": {
           "type": "boolean",
           "default": true,
           "description": "Run built-in static regex rules."
         },
-        "codeSec.complexityThreshold": {
+        "codescape.complexityThreshold": {
           "type": "number",
           "default": 10,
           "description": "Cyclomatic complexity threshold — functions above this are flagged."
         },
-        "codeSec.duplicateLineThreshold": {
+        "codescape.duplicateLineThreshold": {
           "type": "number",
           "default": 6,
           "description": "Minimum number of identical lines to flag as a duplicate block."
         },
-        "codeSec.languages": {
+        "codescape.languages": {
           "type": "array",
           "default": [
             "javascript",
@@ -115,37 +165,50 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codeSec",
-          "title": "CodeSec",
+          "id": "codescape",
+          "title": "Codescape",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "codeSec": [
+      "codescape": [
         {
           "type": "webview",
-          "id": "codeSec.dashboard",
+          "id": "codescape.dashboard",
           "name": "Dashboard"
         }
       ]
     },
     "menus": {
       "editor/context": [
-        { "command": "codeSec.analyzeFile",     "group": "codeSec@1" },
-        { "command": "codeSec.copyAiContext",   "group": "codeSec@2" },
-        { "command": "codeSec.showBlastRadius", "group": "codeSec@3" }
+        {
+          "command": "codescape.analyzeFile",
+          "group": "codescape@1"
+        },
+        {
+          "command": "codescape.copyAiContext",
+          "group": "codescape@2"
+        },
+        {
+          "command": "codescape.showBlastRadius",
+          "group": "codescape@3"
+        }
       ]
     }
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch":   "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/node":   "^20.0.0",
+    "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "@vscode/vsce":  "^3.0.0",
-    "typescript":    "^5.3.0"
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.26.9"
   }
 }

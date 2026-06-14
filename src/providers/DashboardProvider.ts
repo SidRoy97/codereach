@@ -5,7 +5,7 @@ import { FileAnalysisResult, IssueCategory } from '../types';
 
 // Single job: build and display the Activity Bar sidebar dashboard
 export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-  static readonly viewId = 'codeSec.dashboard';
+  static readonly viewId = 'codescape.dashboard';
 
   private view?: vscode.WebviewView;
 
@@ -30,11 +30,11 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
 
     // Handle button clicks and navigation from inside the webview
     webviewView.webview.onDidReceiveMessage(msg => {
-      if (msg.command === 'analyzeFile')      vscode.commands.executeCommand('codeSec.analyzeFile');
-      if (msg.command === 'analyzeWorkspace') vscode.commands.executeCommand('codeSec.analyzeWorkspace');
-      if (msg.command === 'clearAll')         vscode.commands.executeCommand('codeSec.clearIssues');
+      if (msg.command === 'analyzeFile')      vscode.commands.executeCommand('codescape.analyzeFile');
+      if (msg.command === 'analyzeWorkspace') vscode.commands.executeCommand('codescape.analyzeWorkspace');
+      if (msg.command === 'clearAll')         vscode.commands.executeCommand('codescape.clearIssues');
       if (msg.command === 'openSettings')     vscode.commands.executeCommand('workbench.action.openSettings', 'codeSec');
-      if (msg.command === 'generateConfig')   vscode.commands.executeCommand('codeSec.generateConfig');
+      if (msg.command === 'generateConfig')   vscode.commands.executeCommand('codescape.generateConfig');
 
       // Jump to the exact line where the issue was found
       if (msg.command === 'goToLine') {

@@ -1,56 +1,45 @@
-# CodeSec — AI Code Quality
+# Codescape — AI Code Quality & Impact Graph
 
-Real-time code quality, security analysis, and AI-powered fixes for VS Code.
-Works with any LLM — Ollama (free, local), Groq, HuggingFace, OpenRouter, or Anthropic.
+Real-time code quality, security analysis, AI-powered fixes, and an interactive
+code impact graph for VS Code. Works with any LLM — Ollama (free, local), Groq,
+HuggingFace, OpenRouter, or Anthropic. No server required.
 
 ## Features
 
-### 🔒 Security Analysis
+### Code Impact Graph
+- Builds a graph of every function, class, and method across your project using Tree-sitter
+- See callers and callees of any symbol in an interactive panel
+- Blast radius — know how many symbols break before you change one
+- A CodeLens above each function: "3 caller(s) · 7 affected if changed"
+- Export the whole graph to `codescape.json` to share with teammates or AI tools
+
+### Security Analysis
 - SQL injection, XSS, command injection, path traversal
 - Hardcoded secrets and credentials
-- Unsafe deserialization (pickle, ObjectInputStream)
-- Weak crypto (MD5, SHA1, DES, ECB mode)
+- Unsafe deserialization, weak crypto (MD5, SHA1, DES, ECB)
 - Insecure cookies, SSRF, ReDoS, prototype pollution
-- React-specific: dangerous href, localStorage secrets, postMessage
+- React-specific: dangerous href, localStorage secrets, postMessage origin
 
-### 🧹 Code Quality
+### Code Quality & SOLID
 - SOLID principle violations
-- God files and God classes (>300 lines, >15 methods)
-- Deep nesting (5+ levels)
-- Callback hell
-- Boolean flag parameters
-- Chained ternaries
-- Too many function parameters
-- TypeScript `any` type usage
-- Return null anti-pattern
+- God files and God classes, deep nesting, callback hell
+- Boolean flag parameters, chained ternaries, too many parameters
+- TypeScript `any` usage, return-null anti-pattern
 
-### ⚛️ React / TSX
-- Rules of Hooks violations
-- Async useEffect, missing cleanup
-- State mutations, index as key
-- Re-render traps (inline functions, objects)
-- Deprecated lifecycle methods
-- State sprawl → useReducer suggestion
-- Prop drilling detection
+### React / TSX
+- Rules of Hooks violations, async useEffect, missing cleanup
+- State mutations, index as key, re-render traps
+- Deprecated lifecycle methods, state sprawl, prop drilling
 
-### 📊 Complexity
-- Cyclomatic complexity per function
-- Average complexity in dashboard
-
-### 📋 Duplicate Code
-- Fingerprint-based duplicate block detection
-
-### 🤖 AI Analysis
+### AI Analysis
 - Deep semantic analysis via local or cloud LLM
-- Two-phase: static rules instant, AI in background
-- One-click AI fix with diff preview
-- Explain any issue in plain English
+- Two-phase: static rules instant, AI in the background
+- One-click AI fix and plain-English explanations
 
-### 🧠 Context Generation
-- Symbol index — every function/class mapped to file + line
-- Blast radius — files affected if this one changes
-- AGENTS.md — universal AI context file (works with Claude Code, Cursor, ChatGPT, Copilot)
-- Copy AI context — minimal token bundle for any AI
+### AI Context Generation
+- AGENTS.md — a universal context file read by Claude Code, Cursor, ChatGPT, and Copilot
+- Copy minimal AI context for any selected symbol
+- One-sentence summary per file, cached
 
 ## Languages
 
@@ -70,31 +59,24 @@ JavaScript, TypeScript, JSX, TSX, Python, Java
 
 1. Install the extension
 2. Open any JS/TS/Python/Java file — analysis runs automatically
-3. See squiggles inline and issues in the Problems panel (`Cmd+Shift+M`)
-4. Click the CodeSec icon in the Activity Bar for the dashboard
+3. Run `Codescape: Build Code Graph` to enable impact analysis
+4. Click the CodeLens above any function to see its impact graph
 
-## Commands
+## Key Commands
 
 | Command | What it does |
 |---|---|
-| `CodeSec: Analyze Current File` | Manual analysis with progress |
-| `CodeSec: Analyze Entire Workspace` | Scan all files |
-| `CodeSec: Build Symbol Index` | Index every function and class |
-| `CodeSec: Generate AI Context File (AGENTS.md)` | Universal AI context for any LLM |
-| `CodeSec: Summarize Project Files` | One-sentence summary per file |
-| `CodeSec: Copy AI Context` | Minimal context for the selected symbol |
-| `CodeSec: Show Blast Radius` | Files affected by changing the active file |
+| `Codescape: Build Code Graph` | Index every function and its relationships |
+| `Codescape: Export Code Graph` | Write `codescape.json` for sharing |
+| `Codescape: Analyze Current File` | Run quality and security analysis |
+| `Codescape: Generate AI Context File (AGENTS.md)` | Universal AI context for any LLM |
+| `Codescape: Copy AI Context` | Minimal context for the selected symbol |
+| `Codescape: Show Blast Radius` | How many files depend on the current file |
 
 ## Configuration
 
-All settings under `codeSec.*` in VS Code Settings:
+All settings live under `codescape.*` in VS Code Settings.
 
-```json
-{
-  "codeSec.aiProvider": "ollama",
-  "codeSec.aiModel": "qwen2.5-coder:7b",
-  "codeSec.analyzeOnSave": true,
-  "codeSec.complexityThreshold": 10,
-  "codeSec.duplicateLineThreshold": 6
-}
-```
+## License
+
+MIT
