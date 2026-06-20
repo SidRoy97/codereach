@@ -106,12 +106,14 @@
             "Anthropic Claude \u2014 paid API key required",
             "Any OpenAI-compatible server (LM Studio, vLLM, llama.cpp)"
           ],
-          "markdownDescription": "Which AI backend to use.\n\n**Free options:** `ollama` (no account), `groq` (free account), `huggingface` (free account)"
+          "markdownDescription": "Which AI backend to use.\n\n**Free options:** `ollama` (no account), `groq` (free account), `huggingface` (free account)",
+          "description": "AI provider. Default is Ollama, which runs locally and free. Install from ollama.com, run \"ollama pull llama3.2\", and it works with no API key. Switch to a cloud provider and set aiApiKey if preferred."
         },
         "codescape.aiModel": {
           "type": "string",
-          "default": "",
-          "markdownDescription": "Model name. Leave blank for the recommended default.\n\n**Ollama:** `qwen2.5-coder:7b` `llama3.2` `codellama`\n\n**Groq:** `qwen-2.5-coder-32b` `llama-3.3-70b-versatile`\n\n**HuggingFace:** `Qwen/Qwen2.5-Coder-7B-Instruct`"
+          "default": "llama3.2",
+          "markdownDescription": "Model name. Leave blank for the recommended default.\n\n**Ollama:** `qwen2.5-coder:7b` `llama3.2` `codellama`\n\n**Groq:** `qwen-2.5-coder-32b` `llama-3.3-70b-versatile`\n\n**HuggingFace:** `Qwen/Qwen2.5-Coder-7B-Instruct`",
+          "description": "Model name for the chosen provider. For Ollama, a model you have pulled (e.g. llama3.2, qwen2.5-coder). For cloud providers, their model id."
         },
         "codescape.aiApiKey": {
           "type": "string",
@@ -120,8 +122,8 @@
         },
         "codescape.aiBaseUrl": {
           "type": "string",
-          "default": "",
-          "description": "Override the base URL for the chosen provider. Leave blank to use the default."
+          "default": "http://localhost:11434",
+          "description": "Base URL for the chosen provider. Default is the local Ollama server. Cloud providers override this automatically when blank is not used."
         },
         "codescape.analyzeOnSave": {
           "type": "boolean",

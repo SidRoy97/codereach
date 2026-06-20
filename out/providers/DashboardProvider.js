@@ -40,7 +40,8 @@ const path = __importStar(require("path"));
 // a grouped action toolbar (every Codescape command), a category breakdown,
 // and a per-file issue list. Buttons post a message that maps to an existing
 // command via executeCommand — the dashboard holds no feature logic itself,
-// so there is exactly one implementation of each feature.
+// so there is exactly one implementation of each feature. The clicked button
+// is highlighted client-side so the user can see what they last ran.
 class DashboardProvider {
     constructor(store) {
         this.store = store;
@@ -50,11 +51,8 @@ class DashboardProvider {
         view.webview.options = { enableScripts: true };
         view.webview.html = this.buildHtml();
         // Treat every incoming message as untrusted: only a known command id
-        // from our fixed allowlist is ever executed. No data from the webview
-        // is used as anything other than a command key.
-        view.webview.onDidReceiveMessage(message => {
-            this.handleMessage(message);
-        });
+        // from our fixed allowlist is ever executed.
+        view.webview.onDidReceiveMessage(message => this.handleMessage(message));
     }
     refresh() {
         if (this.view) {
@@ -73,15 +71,13 @@ class DashboardProvider {
                 'codescape.analyzeWorkspace',
                 'codescape.clearIssues',
                 'codescape.buildGraph',
-                'codescape.exportGraph',
-                'codescape.findUnused',
                 'codescape.showBlastRadius',
-                'codescape.generateAiContext',
+                'codescape.findUnused',
+                'codescape.exportGraph',
+                'codescape.generateUnderstanding',
                 'codescape.summarizeFiles',
-                'codescape.copyAiContext',
-                'codescape.copyLightContext',
-                'codescape.generateConfig',
                 'codescape.reportIssues',
+                'codescape.generateConfig',
             ]);
             if (allowed.has(msg.id)) {
                 vscode.commands.executeCommand(msg.id);
@@ -92,8 +88,6 @@ class DashboardProvider {
             vscode.commands.executeCommand('workbench.action.openSettings', 'codescape');
             return;
         }
-        // Open a file at a line — validate the line is a number and the file
-        // is inside the workspace before acting.
         if (msg.type === 'goToFile' && typeof msg.uri === 'string' && typeof msg.line === 'number') {
             try {
                 const uri = vscode.Uri.parse(msg.uri);
@@ -149,24 +143,25 @@ class DashboardProvider {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: var(--vscode-font-family); font-size: 12px; color: var(--fg); padding: 10px; }
 
-  .brand { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+  .brand { display: flex; align-items: center; gap: 7px; margin-bottom: 14px; }
   .brand-logo { width: 18px; height: 18px; border-radius: 5px;
     background: linear-gradient(135deg, var(--purple), var(--info)); flex-shrink: 0; }
   .brand-name { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
 
-  .group { margin-bottom: 12px; }
+  .group { margin-bottom: 13px; }
   .group-title { font-size: 9px; font-weight: 700; opacity: 0.45; text-transform: uppercase;
-    letter-spacing: 0.7px; margin-bottom: 5px; }
+    letter-spacing: 0.7px; margin-bottom: 6px; }
   .btn-row { display: flex; gap: 5px; flex-wrap: wrap; }
-  .btn { padding: 6px 9px; border: 1px solid var(--border); background: var(--card-bg);
+  .btn { padding: 6px 10px; border: 1px solid var(--border); background: var(--card-bg);
     color: var(--fg); cursor: pointer; border-radius: 6px; font-size: 11px; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 5px; transition: all 0.12s; }
-  .btn:hover { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); transform: translateY(-1px); }
+  .btn:hover { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent); font-weight: 700; }
   .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  .btn-primary:hover { background: var(--accent-hover); }
   .btn .ic { font-size: 12px; }
 
-  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 14px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0 14px; }
   .stat { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
     padding: 9px 6px; text-align: center; }
   .stat-num { font-size: 20px; font-weight: 800; line-height: 1; }
@@ -222,38 +217,36 @@ class DashboardProvider {
 <div class="group">
   <div class="group-title">Analyze</div>
   <div class="btn-row">
-    <button class="btn btn-primary" onclick="cmd('codescape.analyzeFile')"><span class="ic">⚡</span>This File</button>
-    <button class="btn" onclick="cmd('codescape.analyzeWorkspace')"><span class="ic">📂</span>Workspace</button>
-    <button class="btn" onclick="cmd('codescape.clearIssues')"><span class="ic">🗑</span>Clear</button>
+    <button class="btn btn-primary" data-cmd="codescape.analyzeFile"><span class="ic">⚡</span>This File</button>
+    <button class="btn" data-cmd="codescape.analyzeWorkspace"><span class="ic">📂</span>Workspace</button>
+    <button class="btn" data-cmd="codescape.clearIssues"><span class="ic">🗑</span>Clear</button>
   </div>
 </div>
 
 <div class="group">
-  <div class="group-title">Code Graph</div>
+  <div class="group-title">Understand Code</div>
   <div class="btn-row">
-    <button class="btn" onclick="cmd('codescape.buildGraph')"><span class="ic">🕸️</span>Build Graph</button>
-    <button class="btn" onclick="cmd('codescape.showBlastRadius')"><span class="ic">💥</span>Blast Radius</button>
-    <button class="btn" onclick="cmd('codescape.findUnused')"><span class="ic">🔍</span>Unused</button>
-    <button class="btn" onclick="cmd('codescape.exportGraph')"><span class="ic">📤</span>Export</button>
+    <button class="btn" data-cmd="codescape.buildGraph"><span class="ic">🕸️</span>Code Graph</button>
+    <button class="btn" data-cmd="codescape.showBlastRadius"><span class="ic">💥</span>Blast Radius</button>
+    <button class="btn" data-cmd="codescape.findUnused"><span class="ic">🔍</span>Unused</button>
   </div>
 </div>
 
 <div class="group">
-  <div class="group-title">AI Context</div>
+  <div class="group-title">For AI / LLMs</div>
   <div class="btn-row">
-    <button class="btn" onclick="cmd('codescape.generateAiContext')"><span class="ic">🧠</span>AGENTS.md</button>
-    <button class="btn" onclick="cmd('codescape.summarizeFiles')"><span class="ic">📝</span>Summarize</button>
-    <button class="btn" onclick="cmd('codescape.copyAiContext')"><span class="ic">📋</span>Copy Context</button>
-    <button class="btn" onclick="cmd('codescape.copyLightContext')"><span class="ic">📄</span>Light</button>
+    <button class="btn" data-cmd="codescape.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
+    <button class="btn" data-cmd="codescape.summarizeFiles"><span class="ic">📝</span>Summarize Files</button>
   </div>
 </div>
 
 <div class="group">
   <div class="group-title">Reports &amp; Config</div>
   <div class="btn-row">
-    <button class="btn" onclick="cmd('codescape.reportIssues')"><span class="ic">📊</span>Problems Report</button>
-    <button class="btn" onclick="cmd('codescape.generateConfig')"><span class="ic">⚙️</span>Config File</button>
-    <button class="btn" onclick="openSettings()"><span class="ic">🔧</span>Settings</button>
+    <button class="btn" data-cmd="codescape.reportIssues"><span class="ic">📊</span>Problems Report</button>
+    <button class="btn" data-cmd="codescape.exportGraph"><span class="ic">📤</span>Export Graph</button>
+    <button class="btn" data-cmd="codescape.generateConfig"><span class="ic">⚙️</span>Config</button>
+    <button class="btn" data-settings="1"><span class="ic">🔧</span>Settings</button>
   </div>
 </div>
 
@@ -279,8 +272,23 @@ ${fileCards}
 
 <script>
   const vscode = acquireVsCodeApi();
-  function cmd(id) { vscode.postMessage({ type: 'command', id }); }
-  function openSettings() { vscode.postMessage({ type: 'openSettings' }); }
+
+  // Wire every toolbar button. The clicked one gets the "active" class so the
+  // user can see what they last triggered; this is purely visual state.
+  document.querySelectorAll('.btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.settings) {
+        vscode.postMessage({ type: 'openSettings' });
+        return;
+      }
+      const id = btn.dataset.cmd;
+      if (!id) return;
+      document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      vscode.postMessage({ type: 'command', id });
+    });
+  });
+
   function goTo(uri, line) { vscode.postMessage({ type: 'goToFile', uri, line }); }
   function toggleFile(header) { header.nextElementSibling.classList.toggle('hidden'); }
 </script>

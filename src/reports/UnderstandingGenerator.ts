@@ -80,6 +80,20 @@ export class UnderstandingGenerator {
     const analyzer = new ImpactAnalyzer(graph);
     const fileSummaries = this.summarizer.getSummaries();
 
+    // Probe the AI once up front. If it returns nothing, the provider is not
+    // reachable (e.g. Ollama not running) and every summary would silently be
+    // a structural fallback — so warn and let the user fix it first.
+    const aiReady = await this.probeAi();
+    if (!aiReady) {
+      const choice = await vscode.window.showWarningMessage(
+        'Codescape: No AI response. The document will contain structure only, not AI summaries. ' +
+        'For Ollama: install it, run "ollama pull llama3.2", and make sure "ollama serve" is running. ' +
+        'You can also pick a different provider in Settings.',
+        'Continue anyway', 'Cancel',
+      );
+      if (choice !== 'Continue anyway') return;
+    }
+
     // Group nodes by file so each file becomes one AI call.
     const byFile = this.groupByFile(graph.nodes);
 
@@ -120,6 +134,17 @@ export class UnderstandingGenerator {
     vscode.window.showInformationMessage(
       `Codescape: codescape-understanding.json written — ${symbolCount} symbol(s) across ${Object.keys(doc.files).length} file(s).`,
     );
+  }
+
+  // A tiny test call to see if the AI provider is reachable. Returns true
+  // only when we get a non-empty reply.
+  private async probeAi(): Promise<boolean> {
+    try {
+      const reply = await this.ai.generateText('Reply with the single word: ok', 'ping');
+      return !!(reply && reply.trim());
+    } catch {
+      return false;
+    }
   }
 
   // Group every node under its file path.
