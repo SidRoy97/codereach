@@ -98,13 +98,11 @@ export class UnderstandingGenerator {
 
     const analyzer = new ImpactAnalyzer(graph);
 
-    // If file summaries have never been generated, run them now so the
-    // file-level summary fields are populated instead of falling back.
-    let fileSummaries = this.summarizer.getSummaries();
-    if (fileSummaries.size === 0) {
-      await this.summarizer.summarizeWorkspace();
-      fileSummaries = this.summarizer.getSummaries();
-    }
+    // Use file summaries only if they already exist in the cache. I do not
+    // generate them here: the per-symbol pass below already summarizes every
+    // symbol, and adding a second full AI pass for file-level summaries would
+    // roughly double the compute (and the fan noise) for little extra value.
+    const fileSummaries = this.summarizer.getSummaries();
 
     // Probe the AI once up front. If it returns nothing, the provider is not
     // reachable (e.g. Ollama not running) and every summary would silently be
@@ -190,10 +188,10 @@ export class UnderstandingGenerator {
   private async summarizeFileSymbols(root: string, file: string, nodes: CodeNode[]): Promise<AiSummaryMap> {
     let code = '';
     try {
-      // I read a generous slice of the file so symbols near the bottom of
-      // longer files still get accurate summaries. Very large files are still
-      // capped to keep each AI call within a reasonable size.
-      code = fs.readFileSync(path.join(root, file), 'utf8').slice(0, 14000);
+      // I read a moderate slice of each file: enough that symbols lower in
+      // the file still get good summaries, but not so much that each AI call
+      // becomes very heavy. Very large files are still capped here.
+      code = fs.readFileSync(path.join(root, file), 'utf8').slice(0, 9000);
     } catch {
       return {};
     }

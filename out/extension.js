@@ -232,47 +232,18 @@ function activateInternal(context) {
     context.subscriptions.push(vscode.commands.registerCommand('codescape.generateConfig', () => {
         generateProjectConfig();
     }));
-    // --- Context / AI assist commands ---
-    context.subscriptions.push(vscode.commands.registerCommand('codescape.summarizeFiles', async () => {
-        try {
-            await summarizer.summarizeWorkspace();
+    // --- Code graph (internal) ---
+    // The graph is built on activation. This helper rebuilds it on demand if it
+    // is somehow empty, so the features that read it (Blast Radius, Find Unused,
+    // Understanding Doc) always have data without a user-facing "build" step.
+    const ensureGraph = async () => {
+        if (graphBuilder.getGraph().nodes.length === 0) {
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Codescape: Building code graph…' }, async () => {
+                await graphBuilder.build();
+                codeLens.refresh();
+            });
         }
-        catch (e) {
-            vscode.window.showErrorMessage(`Codescape: Summarize failed — ${e}`);
-        }
-    }));
-    // --- Code graph commands ---
-    context.subscriptions.push(vscode.commands.registerCommand('codescape.buildGraph', async () => {
-        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Codescape: Building code graph…' }, async () => {
-            await graphBuilder.build();
-            codeLens.refresh();
-        });
-        const graph = graphBuilder.getGraph();
-        if (graph.nodes.length === 0) {
-            vscode.window.showWarningMessage('Codescape: No symbols found to graph.');
-            return;
-        }
-        // Show every symbol as a clickable row, with how many other symbols
-        // each one connects to, so the overview is useful at a glance.
-        const rows = graph.nodes
-            .map(node => {
-            const degree = graph.edges.filter(e => e.from === node.id || e.to === node.id).length;
-            return {
-                label: node.name,
-                detail: `${node.kind} · ${node.file}:${node.line + 1}`,
-                file: node.file,
-                line: node.line,
-                badge: degree > 0 ? `${degree} link${degree === 1 ? '' : 's'}` : undefined,
-                tone: 'normal',
-            };
-        })
-            .sort((a, b) => a.detail.localeCompare(b.detail));
-        listPanel.show({
-            title: 'Code Graph',
-            intro: `${graph.nodes.length} symbol(s), ${graph.edges.length} relationship(s). Click any symbol to open it.`,
-            rows,
-        });
-    }));
+    };
     context.subscriptions.push(vscode.commands.registerCommand('codescape.exportGraph', async () => {
         await graphBuilder.build();
         const uri = await graphBuilder.exportToFile();
@@ -295,15 +266,20 @@ function activateInternal(context) {
         }
     }));
     // Show which files depend on the active file, as a clickable list.
-    context.subscriptions.push(vscode.commands.registerCommand('codescape.showBlastRadius', () => {
-        const editor = vscode.window.activeTextEditor;
+    context.subscriptions.push(vscode.commands.registerCommand('codescape.showBlastRadius', async () => {
+        // When this runs from a dashboard button, the webview holds focus and
+        // activeTextEditor is undefined, so I fall back to the first visible
+        // file editor before giving up.
+        const editor = vscode.window.activeTextEditor
+            ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
         if (!editor) {
-            vscode.window.showWarningMessage('Codescape: Open a file first.');
+            vscode.window.showWarningMessage('Codescape: Open a file in the editor first.');
             return;
         }
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root)
             return;
+        await ensureGraph();
         const relFile = path.relative(root, editor.document.uri.fsPath);
         const graph = graphBuilder.getGraph();
         // Symbols defined in this file.
@@ -338,6 +314,7 @@ function activateInternal(context) {
             vscode.window.showWarningMessage('Codescape: No workspace open.');
             return;
         }
+        await ensureGraph();
         const unused = new ImpactAnalyzer_1.ImpactAnalyzer(graphBuilder.getGraph()).findUnusedSymbols();
         const rows = unused.map(node => ({
             label: node.name,
@@ -357,6 +334,7 @@ function activateInternal(context) {
     // Write the structured project-understanding document (nested JSON).
     context.subscriptions.push(vscode.commands.registerCommand('codescape.generateUnderstanding', async () => {
         try {
+            await ensureGraph();
             await understanding.generate();
         }
         catch (e) {

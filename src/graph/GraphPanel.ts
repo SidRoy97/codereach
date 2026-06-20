@@ -12,6 +12,7 @@ import { CodeGraph } from './CodeGraphTypes';
 //      webview can never make the extension act on an arbitrary symbol id.
 export class GraphPanel {
   private panel?: vscode.WebviewPanel;
+  private pendingNodeId?: string;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -20,6 +21,8 @@ export class GraphPanel {
 
   // Open (or reveal) the panel and show the impact of one symbol.
   show(nodeId: string): void {
+    this.pendingNodeId = nodeId;
+
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         'codescape.graph',
@@ -38,10 +41,16 @@ export class GraphPanel {
       this.panel.webview.onDidReceiveMessage(message => {
         this.handleMessage(message);
       });
+
+      // Set the HTML once. The webview posts "ready" when its script has
+      // loaded, and only then do we send the data — this avoids a race where
+      // the render message arrives before the listener exists.
+      this.panel.webview.html = this.buildHtml();
+    } else {
+      // Panel already exists and its listener is live, so render immediately.
+      this.renderImpact(nodeId);
     }
 
-    this.panel.webview.html = this.buildHtml();
-    this.renderImpact(nodeId);
     this.panel.reveal(vscode.ViewColumn.Beside);
   }
 
@@ -61,6 +70,13 @@ export class GraphPanel {
   private handleMessage(message: unknown): void {
     if (!message || typeof message !== 'object') return;
     const msg = message as Record<string, unknown>;
+
+    // The webview finished loading and is listening. Render whatever symbol
+    // was requested when the panel was opened.
+    if (msg.type === 'ready') {
+      if (this.pendingNodeId) this.renderImpact(this.pendingNodeId);
+      return;
+    }
 
     // Re-center on another node the user clicked.
     if (msg.type === 'focus' && typeof msg.nodeId === 'string') {
@@ -138,6 +154,10 @@ export class GraphPanel {
     if (!message || message.type !== 'render') return;
     renderImpact(message.impact);
   });
+
+  // Tell the extension the listener is live. It then sends the impact data,
+  // which avoids a race where data is posted before this script has loaded.
+  vscode.postMessage({ type: 'ready' });
 
   function renderImpact(impact) {
     const elements = [];

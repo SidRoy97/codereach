@@ -1,22 +1,22 @@
 {
   "project": "codesec",
-  "generated": "2026-06-20T05:13:12.535Z",
-  "globalContext": "This project appears to be a comprehensive code analysis tool, likely for use in software development environments like Visual Studio Code. It includes various components such as scanners (e.g., ComplexityScanner, StaticScanner), publishers (e.g., StatusBarManager, DiagnosticsPublisher), and providers (e.g., CodeActionsProvider, DashboardProvider). The architecture seems to be modular, with each component handling specific aspects of code analysis, reporting, and user interaction. The `AnalysisOrchestrator` likely coordinates the flow of data between these components, while `ConfigManager` handles settings and preferences. The project also includes rule sets for different programming languages (e.g., pythonRules.ts, javaRules.ts) to ensure language-specific checks are applied correctly. Overall, it seems designed to provide detailed insights into code quality and potential issues across multiple languages and frameworks.",
+  "generated": "2026-06-20T05:54:54.411Z",
+  "globalContext": "Project \"codesec\" with 9 analyzed file(s). Run Summarize Project Files and ensure an AI provider is configured for richer context.",
   "files": {
     "src/ResultStore.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "Manages in-memory file analysis results for VSCode.",
       "symbols": [
         {
           "name": "ResultStore",
           "kind": "class",
-          "summary": "A class implementing IResultStore that stores and manages file analysis results in an in-memory map.",
+          "summary": "A class that stores and manages file analysis results in an in-memory map, providing methods to save, retrieve, list all, remove, and clear stored results.",
           "line": 6,
           "callers": [],
           "callees": [],
           "methods": [
             {
               "name": "save",
-              "summary": "Saves or overwrites a file's analysis result in the store using its URI as the key.",
+              "summary": "Saves or overwrites the result for a file by its URI in the internal store.",
               "line": 12,
               "callers": [
                 "runPhased",
@@ -26,7 +26,7 @@
             },
             {
               "name": "get",
-              "summary": "Retrieves the last analysis result for a given file URI, returning undefined if no result exists.",
+              "summary": "Retrieves the last analysis result for a specific file using its URI, returning undefined if no result exists.",
               "line": 17,
               "callers": [
                 "generate",
@@ -57,19 +57,19 @@
             },
             {
               "name": "getAll",
-              "summary": "Returns all stored analysis results as an array, used by dashboard and status bar components.",
+              "summary": "Returns all currently stored analysis results as an array, useful for dashboard and status bar display.",
               "line": 22,
               "callers": [
                 "generate",
                 "render",
                 "activateInternal",
-                "buildHtml"
+                "scopedResults"
               ],
               "callees": []
             },
             {
               "name": "remove",
-              "summary": "Deletes a file's analysis result from the store when the file is closed to prevent stale data.",
+              "summary": "Deletes the stored result for a specific file when it is closed to prevent stale data accumulation.",
               "line": 27,
               "callers": [
                 "activateInternal"
@@ -78,7 +78,7 @@
             },
             {
               "name": "clear",
-              "summary": "Removes all analysis results from the store, typically called when the user requests to clear all data.",
+              "summary": "Removes all stored results from the store, typically called when the user requests to clear all data.",
               "line": 32,
               "callers": [
                 "activateInternal"
@@ -90,33 +90,34 @@
       ]
     },
     "src/reports/UnderstandingGenerator.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "Generates a structured understanding document for a software project based on its code graph.",
       "symbols": [
         {
           "name": "UnderstandingGenerator",
           "kind": "class",
-          "summary": "A class responsible for generating a structured understanding document of a software project.",
-          "line": 60,
+          "summary": "A class that generates a structured understanding document of a codebase, including symbols, relationships, and summaries.",
+          "line": 79,
           "callers": [],
           "callees": [],
           "methods": [
             {
               "name": "constructor",
-              "summary": "Initializes the UnderstandingGenerator with methods to fetch code graph, summarize files, and interact with AI.",
-              "line": 61,
+              "summary": "Initializes the generator with methods to fetch graph data, summarize files, and interact with an AI scanner.",
+              "line": 80,
               "callers": [],
               "callees": []
             },
             {
               "name": "generate",
-              "summary": "Main method that orchestrates fetching the code graph, summarizing files, probing AI, grouping nodes by file, building the document, and writing it to a JSON file.",
-              "line": 67,
+              "summary": "Main method to execute the generation process, reading the code graph, summarizing files, probing the AI, grouping by file, and building the final document.",
+              "line": 86,
               "callers": [
                 "activateInternal"
               ],
               "callees": [
                 "getGraph",
                 "getSummaries",
+                "summarizeWorkspace",
                 "probeAi",
                 "groupByFile",
                 "get",
@@ -127,8 +128,8 @@
             },
             {
               "name": "probeAi",
-              "summary": "Checks if the AI provider is reachable by sending a test request.",
-              "line": 141,
+              "summary": "Checks if the AI provider is reachable by sending a simple request.",
+              "line": 167,
               "callers": [
                 "generate"
               ],
@@ -138,8 +139,8 @@
             },
             {
               "name": "groupByFile",
-              "summary": "Groups code nodes by their respective file paths for efficient processing.",
-              "line": 151,
+              "summary": "Groups nodes (symbols) by their respective file paths for efficient processing.",
+              "line": 177,
               "callers": [
                 "generate"
               ],
@@ -149,20 +150,19 @@
             },
             {
               "name": "summarizeFileSymbols",
-              "summary": "Asks the AI for one-line summaries of symbols in a given file.",
-              "line": 164,
+              "summary": "Asks the AI for summaries of symbols in each file, falling back to structural descriptions if the AI is unavailable.",
+              "line": 190,
               "callers": [
                 "generate"
               ],
               "callees": [
-                "generateText",
-                "parse"
+                "generateText"
               ]
             },
             {
               "name": "buildFileEntry",
-              "summary": "Constructs a FileEntry object containing summary and symbol details for a file.",
-              "line": 188,
+              "summary": "Constructs a detailed entry for each file, including top-level symbols and methods nested under classes.",
+              "line": 217,
               "callers": [
                 "generate"
               ],
@@ -175,8 +175,8 @@
             },
             {
               "name": "toSymbolEntry",
-              "summary": "Converts a CodeNode to a SymbolEntry, including its methods if applicable.",
-              "line": 236,
+              "summary": "Converts a code node into a symbol entry with its relationships and summary.",
+              "line": 265,
               "callers": [
                 "buildFileEntry"
               ],
@@ -187,8 +187,8 @@
             },
             {
               "name": "relationships",
-              "summary": "Retrieves relationships (callers and callees) for symbols from the code graph.",
-              "line": 249,
+              "summary": "Retrieves caller and callee names for a given node, filtering out built-in/global method names.",
+              "line": 280,
               "callers": [
                 "buildFileEntry",
                 "toSymbolEntry"
@@ -200,8 +200,8 @@
             },
             {
               "name": "fallbackSummary",
-              "summary": "Provides a fallback summary when AI fails to respond.",
-              "line": 267,
+              "summary": "Provides a plain description of a symbol when the AI gives no summary.",
+              "line": 300,
               "callers": [
                 "buildFileEntry",
                 "toSymbolEntry"
@@ -210,8 +210,8 @@
             },
             {
               "name": "buildGlobalContext",
-              "summary": "Generates a global context paragraph summarizing the project's architecture.",
-              "line": 273,
+              "summary": "Generates a paragraph summarizing the entire project, falling back to file counts if the AI is unavailable.",
+              "line": 306,
               "callers": [
                 "generate"
               ],
@@ -224,26 +224,26 @@
       ]
     },
     "src/reports/ProblemsReporter.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "Generates and displays a code issues report in Markdown and JSON formats.",
       "symbols": [
         {
           "name": "ProblemsReporter",
           "kind": "class",
-          "summary": "A class that generates a report from analysis results, including both markdown and JSON formats.",
+          "summary": "A class that generates a report of code issues in a project, including both a human-readable markdown file and a machine-readable JSON file.",
           "line": 28,
           "callers": [],
           "callees": [],
           "methods": [
             {
               "name": "constructor",
-              "summary": "Initializes the reporter with a ResultStore and a function to get a CodeGraph.",
+              "summary": "Initializes the reporter with a ResultStore for analysis results and a function to get the CodeGraph.",
               "line": 29,
               "callers": [],
               "callees": []
             },
             {
               "name": "generate",
-              "summary": "Builds the report data, writes it to files, and opens the markdown file in VSCode.",
+              "summary": "Builds the report data, writes both files (markdown and JSON), and opens the markdown file in VSCode.",
               "line": 35,
               "callers": [
                 "activateInternal"
@@ -269,7 +269,7 @@
             },
             {
               "name": "enrich",
-              "summary": "Adds the enclosing function name to an issue based on its line number and the code graph.",
+              "summary": "Adds the enclosing function name to an issue based on its line number and the provided code graph.",
               "line": 84,
               "callers": [
                 "buildReport"
@@ -280,7 +280,7 @@
             },
             {
               "name": "enclosingFunction",
-              "summary": "Finds the function whose definition is at or before a given line in the same file.",
+              "summary": "Finds the function whose definition is at or before a given line in a file, falling back to '(file scope)' if none precede it.",
               "line": 99,
               "callers": [
                 "enrich"
@@ -289,7 +289,7 @@
             },
             {
               "name": "toMarkdown",
-              "summary": "Converts the report data into human-readable markdown format, grouped by file and function.",
+              "summary": "Converts the report data into a human-readable markdown format grouped by file and function.",
               "line": 111,
               "callers": [
                 "generate"
@@ -300,7 +300,7 @@
             },
             {
               "name": "toJson",
-              "summary": "Converts the report data into machine-readable JSON format.",
+              "summary": "Converts the report data into a machine-readable JSON format.",
               "line": 167,
               "callers": [
                 "generate"
@@ -312,12 +312,12 @@
       ]
     },
     "src/publishers/StatusBarManager.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "Updates the status bar with issue counts and colors based on the result store.",
       "symbols": [
         {
           "name": "StatusBarManager",
           "kind": "class",
-          "summary": "A class that manages the status bar in a VS Code extension, updating it with issue counts and colors based on an IResultStore.",
+          "summary": "A class that manages the status bar in a VSCode extension, updating it with issue counts and severity levels.",
           "line": 5,
           "callers": [],
           "callees": [],
@@ -336,7 +336,7 @@
             },
             {
               "name": "render",
-              "summary": "Recalculates and updates the status bar text and color based on the current state of the IResultStore, showing issue counts and severity levels.",
+              "summary": "Recalculates and updates the status bar text based on the current state of issues in the store.",
               "line": 17,
               "callers": [
                 "constructor",
@@ -358,7 +358,7 @@
       ]
     },
     "src/publishers/DiagnosticsPublisher.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "This file defines a `DiagnosticsPublisher` class that implements the `IResultPresenter` and `vscode.Disposable` interfaces to present code analysis issues as squiggles in the editor's Problems panel.",
       "symbols": [
         {
           "name": "DiagnosticsPublisher",
@@ -402,7 +402,7 @@
             },
             {
               "name": "toDiagnostic",
-              "summary": "Converts an Issue object into a vscode.Diagnostic object, formatting it with appropriate icons and messages.",
+              "summary": "Converts an Issue object into a vscode.Diagnostic object suitable for display in the Problems panel.",
               "line": 33,
               "callers": [
                 "present"
@@ -413,7 +413,7 @@
             },
             {
               "name": "dispose",
-              "summary": "Disposes of the diagnostic collection to free up resources.",
+              "summary": "Disposes of the diagnostic collection, freeing up resources.",
               "line": 55,
               "callers": [],
               "callees": []
@@ -423,7 +423,7 @@
       ]
     },
     "src/scanners/ComplexityScanner.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "Counts cyclomatic complexity in functions and flags those exceeding a threshold.",
       "symbols": [
         {
           "name": "ComplexityScanner",
@@ -442,7 +442,7 @@
             },
             {
               "name": "scan",
-              "summary": "Scans a given document for functions with cyclomatic complexity exceeding a threshold and returns issues.",
+              "summary": "Scans a given document for functions exceeding a complexity threshold and returns issues if found.",
               "line": 18,
               "callers": [
                 "runPhased",
@@ -466,7 +466,7 @@
             },
             {
               "name": "normalizeLang",
-              "summary": "Normalizes language IDs to a standard format used for complexity analysis.",
+              "summary": "Normalizes language IDs to a standard format for consistency.",
               "line": 59,
               "callers": [
                 "scan",
@@ -479,19 +479,19 @@
       ]
     },
     "src/scanners/StaticScanner.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "The `StaticScanner` class scans code documents for issues using language-specific rules.",
       "symbols": [
         {
           "name": "StaticScanner",
           "kind": "class",
-          "summary": "A class implementing IScanner that performs static code analysis on a given text document.",
+          "summary": "A class implementing IScanner to perform static code analysis on various programming languages.",
           "line": 13,
           "callers": [],
           "callees": [],
           "methods": [
             {
               "name": "scan",
-              "summary": "A method that analyzes the provided text document and returns an array of issues based on language-specific rules.",
+              "summary": "Method that analyzes a given text document and returns an array of issues based on the detected language and rules.",
               "line": 16,
               "callers": [
                 "runPhased",
@@ -507,7 +507,7 @@
             },
             {
               "name": "getLines",
-              "summary": "A private method that extracts all lines from the provided text document as a string array.",
+              "summary": "Private method that extracts all lines from a text document as a string array.",
               "line": 38,
               "callers": [
                 "scan"
@@ -519,26 +519,26 @@
       ]
     },
     "src/scanners/AiScanner.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "The file defines an AI scanner class that integrates with various AI providers to perform code reviews and return parsed issues.",
       "symbols": [
         {
           "name": "AiScanner",
           "kind": "class",
-          "summary": "A class that implements the IScanner interface to perform AI-based code scanning and text generation using various providers.",
+          "summary": "A class that integrates with various AI providers to scan code for issues and generate text.",
           "line": 46,
           "callers": [],
           "callees": [],
           "methods": [
             {
               "name": "constructor",
-              "summary": "Initializes an instance of AiScanner with a configuration provider.",
+              "summary": "Initializes the AiScanner with a configuration provider.",
               "line": 49,
               "callers": [],
               "callees": []
             },
             {
               "name": "scan",
-              "summary": "Scans a given document for issues by calling the configured AI provider and parsing the response.",
+              "summary": "Scans a given document using an AI provider, returning parsed issues or an empty array if disabled or too large.",
               "line": 51,
               "callers": [
                 "runPhased",
@@ -562,7 +562,7 @@
             },
             {
               "name": "generateText",
-              "summary": "Generates text based on a system prompt and user input, using the configured AI provider.",
+              "summary": "Generates text based on a system prompt and user input using the configured AI provider.",
               "line": 91,
               "callers": [
                 "probeAi",
@@ -586,7 +586,7 @@
             },
             {
               "name": "callOllama",
-              "summary": "Calls the Ollama API to perform code scanning or text generation.",
+              "summary": "Calls the Ollama API to analyze code and return issues in JSON format.",
               "line": 111,
               "callers": [
                 "scan",
@@ -596,19 +596,17 @@
             },
             {
               "name": "callHuggingFace",
-              "summary": "Calls the Hugging Face API to perform code scanning or text generation.",
+              "summary": "Calls the Hugging Face Inference API for code analysis, handling rate limits and model availability.",
               "line": 147,
               "callers": [
                 "scan",
                 "generateText"
               ],
-              "callees": [
-                "parse"
-              ]
+              "callees": []
             },
             {
               "name": "callOpenAiFormat",
-              "summary": "Calls an API in OpenAI format to perform code scanning or text generation.",
+              "summary": "Calls APIs that use OpenAI's chat completion format, such as Groq, OpenRouter, LM Studio, and vLLM.",
               "line": 207,
               "callers": [
                 "scan",
@@ -618,7 +616,7 @@
             },
             {
               "name": "callAnthropic",
-              "summary": "Calls the Anthropic API to perform code scanning or text generation.",
+              "summary": "Calls the Anthropic API using its specific message format.",
               "line": 247,
               "callers": [
                 "scan",
@@ -628,18 +626,16 @@
             },
             {
               "name": "parseResponse",
-              "summary": "Parses the response from the AI provider into a structured array of issues or generated text.",
+              "summary": "Extracts and parses JSON issues from the AI provider's response, handling potential formatting errors.",
               "line": 275,
               "callers": [
                 "scan"
               ],
-              "callees": [
-                "parse"
-              ]
+              "callees": []
             },
             {
               "name": "requiresKey",
-              "summary": "Determines if an API key is required for a given provider.",
+              "summary": "Determines if a key is required for a given AI provider before making an API call.",
               "line": 312,
               "callers": [
                 "scan"
@@ -648,52 +644,47 @@
             },
             {
               "name": "showMissingKeyMessage",
-              "summary": "Displays a message to the user indicating that an API key is missing for a provider.",
+              "summary": "Displays a warning message to users about missing API keys and provides options to obtain one or switch providers.",
               "line": 317,
               "callers": [
                 "scan"
               ],
-              "callees": [
-                "parse"
-              ]
+              "callees": []
             },
             {
               "name": "handleError",
-              "summary": "Handles errors encountered during API calls, displaying appropriate messages and logging errors.",
+              "summary": "Handles errors from AI provider calls, providing user-friendly messages and guidance.",
               "line": 336,
               "callers": [
                 "scan",
                 "generateText"
               ],
-              "callees": [
-                "parse"
-              ]
+              "callees": []
             }
           ]
         }
       ]
     },
     "src/scanners/DuplicateScanner.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
+      "summary": "Detects and reports copy-pasted code blocks in a document.",
       "symbols": [
         {
           "name": "DuplicateScanner",
           "kind": "class",
-          "summary": "A class that detects copy-pasted code blocks in a document using a sliding window hash algorithm.",
+          "summary": "class \"DuplicateScanner\" defined in src/scanners/DuplicateScanner.ts at line 6.",
           "line": 6,
           "callers": [],
           "callees": [],
           "methods": [
             {
               "name": "constructor",
-              "summary": "Initializes the scanner with a configuration provider.",
               "line": 9,
               "callers": [],
               "callees": []
             },
             {
               "name": "scan",
-              "summary": "Scans a document for duplicate code blocks and returns issues.",
+              "summary": "method \"scan\" defined in src/scanners/DuplicateScanner.ts at line 11.",
               "line": 11,
               "callers": [
                 "runPhased",
@@ -705,7 +696,7 @@
             },
             {
               "name": "scanWithBlocks",
-              "summary": "Scans a document, returning both issues and raw blocks for further processing.",
+              "summary": "method \"scanWithBlocks\" defined in src/scanners/DuplicateScanner.ts at line 16.",
               "line": 16,
               "callers": [
                 "scan",
@@ -720,7 +711,7 @@
             },
             {
               "name": "normalize",
-              "summary": "Preprocesses lines by trimming whitespace and collapsing multiple spaces to detect duplicates more effectively.",
+              "summary": "method \"normalize\" defined in src/scanners/DuplicateScanner.ts at line 25.",
               "line": 25,
               "callers": [
                 "scanWithBlocks"
@@ -729,7 +720,7 @@
             },
             {
               "name": "findDuplicates",
-              "summary": "Identifies duplicate code blocks using a sliding window hash technique.",
+              "summary": "method \"findDuplicates\" defined in src/scanners/DuplicateScanner.ts at line 32.",
               "line": 32,
               "callers": [
                 "scanWithBlocks"
@@ -741,7 +732,7 @@
             },
             {
               "name": "hash",
-              "summary": "Generates a hash value for a given array of lines to identify potential duplicates.",
+              "summary": "method \"hash\" defined in src/scanners/DuplicateScanner.ts at line 58.",
               "line": 58,
               "callers": [
                 "findDuplicates"
@@ -750,1362 +741,10 @@
             },
             {
               "name": "toIssue",
-              "summary": "Converts a detected duplicate block into an issue object with relevant details.",
+              "summary": "method \"toIssue\" defined in src/scanners/DuplicateScanner.ts at line 64.",
               "line": 64,
               "callers": [
                 "scanWithBlocks"
-              ],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/rules/pythonRules.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "runPythonRules",
-          "kind": "function",
-          "summary": "A function that defines and runs a set of rules to check Python code for security vulnerabilities, ensuring it adheres to best practices.",
-          "line": 211,
-          "callers": [
-            "scan"
-          ],
-          "callees": []
-        }
-      ]
-    },
-    "src/rules/javascriptRules.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "runJavaScriptRules",
-          "kind": "function",
-          "summary": "Executes a series of predefined rules to detect potential security vulnerabilities and issues in JavaScript code.",
-          "line": 198,
-          "callers": [
-            "scan"
-          ],
-          "callees": [
-            "detectLongFunctions"
-          ]
-        },
-        {
-          "name": "detectLongFunctions",
-          "kind": "function",
-          "summary": "Identifies functions that are excessively long, which may indicate complexity or potential refactoring opportunities.",
-          "line": 236,
-          "callers": [
-            "runJavaScriptRules"
-          ],
-          "callees": []
-        }
-      ]
-    },
-    "src/rules/javaRules.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "runJavaRules",
-          "kind": "function",
-          "summary": "Function that executes a series of predefined rules to identify and report security vulnerabilities in Java code, ensuring compliance with best practices.",
-          "line": 197,
-          "callers": [
-            "scan"
-          ],
-          "callees": []
-        }
-      ]
-    },
-    "src/rules/reactRules.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "runReactRules",
-          "kind": "function",
-          "summary": "Executes a series of predefined rules to analyze React code for security vulnerabilities, performance issues, and best practices.",
-          "line": 276,
-          "callers": [
-            "scan"
-          ],
-          "callees": [
-            "detectStateSprawl",
-            "detectMissingDepArrays",
-            "detectPropDrilling"
-          ]
-        },
-        {
-          "name": "detectStateSprawl",
-          "kind": "function",
-          "summary": "Identifies instances where state management in React components becomes overly complex or difficult to maintain, suggesting potential refactoring.",
-          "line": 315,
-          "callers": [
-            "runReactRules"
-          ],
-          "callees": []
-        },
-        {
-          "name": "detectMissingDepArrays",
-          "kind": "function",
-          "summary": "Checks for functional component dependencies that are missing from the dependency array of useEffect hooks, which can lead to unexpected behavior.",
-          "line": 345,
-          "callers": [
-            "runReactRules"
-          ],
-          "callees": []
-        },
-        {
-          "name": "detectPropDrilling",
-          "kind": "function",
-          "summary": "Finds cases of prop drilling in React applications where data is passed through multiple layers of components unnecessarily, potentially leading to performance issues and code complexity.",
-          "line": 373,
-          "callers": [
-            "runReactRules"
-          ],
-          "callees": []
-        }
-      ]
-    },
-    "src/types.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "toVsCodeSeverity",
-          "kind": "function",
-          "summary": "Converts a custom issue severity string to the corresponding VS Code DiagnosticSeverity enum value, ensuring compatibility with VS Code's Problems panel.",
-          "line": 42,
-          "callers": [
-            "toDiagnostic"
-          ],
-          "callees": []
-        }
-      ]
-    },
-    "src/graph/CodeGraphBuilder.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "CodeGraphBuilder",
-          "kind": "class",
-          "summary": "A class responsible for building a code graph representing the structure and relationships within a project's source files.",
-          "line": 13,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes an instance of CodeGraphBuilder with a LanguageParser dependency.",
-              "line": 17,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "build",
-              "summary": "Asynchronously builds a CodeGraph by parsing all supported files in the workspace, resolving symbol calls, and caching the result.",
-              "line": 20,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": [
-                "workspaceRoot",
-                "dropCompiledSiblings",
-                "isInsideWorkspace",
-                "parse",
-                "get",
-                "enclosingSymbolId",
-                "resolveEdges"
-              ]
-            },
-            {
-              "name": "getGraph",
-              "summary": "Returns the cached CodeGraph without rebuilding it.",
-              "line": 77,
-              "callers": [
-                "generate",
-                "buildReport",
-                "provideCodeLenses",
-                "renderImpact",
-                "handleMessage",
-                "activateInternal"
-              ],
-              "callees": []
-            },
-            {
-              "name": "exportToFile",
-              "summary": "Writes the current graph to a JSON file named 'codescape.json' at the workspace root for sharing with other developers and AI tools.",
-              "line": 83,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": [
-                "workspaceRoot"
-              ]
-            },
-            {
-              "name": "dropCompiledSiblings",
-              "summary": "Skips compiled JavaScript/JSX files when their TypeScript/TSX siblings exist, avoiding indexing build output.",
-              "line": 97,
-              "callers": [
-                "build"
-              ],
-              "callees": []
-            },
-            {
-              "name": "enclosingSymbolId",
-              "summary": "Determines which declared symbol a call belongs to based on line position, prioritizing the nearest enclosing symbol.",
-              "line": 109,
-              "callers": [
-                "build"
-              ],
-              "callees": []
-            },
-            {
-              "name": "resolveEdges",
-              "summary": "Turns recorded calls into edges by matching callee names to node ids, preferring definitions in the same file as the caller.",
-              "line": 128,
-              "callers": [
-                "build"
-              ],
-              "callees": [
-                "get"
-              ]
-            },
-            {
-              "name": "isInsideWorkspace",
-              "summary": "Ensures that a resolved path sits inside the workspace root, preventing path traversal attacks.",
-              "line": 159,
-              "callers": [
-                "build"
-              ],
-              "callees": []
-            },
-            {
-              "name": "workspaceRoot",
-              "summary": "method \"workspaceRoot\" defined in src/graph/CodeGraphBuilder.ts at line 165.",
-              "line": 165,
-              "callers": [
-                "build",
-                "exportToFile"
-              ],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/graph/ImpactCodeLens.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "ImpactCodeLens",
-          "kind": "class",
-          "summary": "A class that implements vscode.CodeLensProvider to add clickable 'N callers · M affected' lines above functions in the editor, linking to an impact graph panel.",
-          "line": 9,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes a new instance of ImpactCodeLens with a function to retrieve the current code graph.",
-              "line": 13,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "refresh",
-              "summary": "Triggers an event to refresh the code lenses when the underlying graph data changes.",
-              "line": 16,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": []
-            },
-            {
-              "name": "provideCodeLenses",
-              "summary": "Generates and returns CodeLens objects for each function in the current file, displaying caller and affected counts.",
-              "line": 20,
-              "callers": [],
-              "callees": [
-                "getGraph",
-                "analyze",
-                "analyze"
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    "src/graph/LanguageParser.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "LanguageParser",
-          "kind": "class",
-          "summary": "A class that parses code files to extract symbols and calls using Tree-sitter.",
-          "line": 73,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the LanguageParser with the extension path.",
-              "line": 79,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "init",
-              "summary": "Loads and initializes the Tree-sitter parser and languages.",
-              "line": 82,
-              "callers": [
-                "parse"
-              ],
-              "callees": []
-            },
-            {
-              "name": "grammarKey",
-              "summary": "Determines the base grammar key for a given VS Code language ID.",
-              "line": 91,
-              "callers": [
-                "parse"
-              ],
-              "callees": []
-            },
-            {
-              "name": "loadLanguage",
-              "summary": "Caches and loads the Tree-sitter grammar for a specific language ID.",
-              "line": 99,
-              "callers": [
-                "parse"
-              ],
-              "callees": [
-                "get"
-              ]
-            },
-            {
-              "name": "parse",
-              "summary": "Parses a document into symbols and calls using Tree-sitter.",
-              "line": 115,
-              "callers": [
-                "summarizeFileSymbols",
-                "callHuggingFace",
-                "parseResponse",
-                "showMissingKeyMessage",
-                "handleError",
-                "build",
-                "showDiff",
-                "handleMessage",
-                "loadCache"
-              ],
-              "callees": [
-                "init",
-                "grammarKey",
-                "loadLanguage",
-                "walk",
-                "readName",
-                "readCalleeName"
-              ]
-            },
-            {
-              "name": "walk",
-              "summary": "Traverses the syntax tree of a parsed document, calling a visit function on each node.",
-              "line": 158,
-              "callers": [
-                "parse"
-              ],
-              "callees": []
-            },
-            {
-              "name": "readName",
-              "summary": "Extracts the name of a declaration (function, class, method) from a Tree-sitter node.",
-              "line": 168,
-              "callers": [
-                "parse"
-              ],
-              "callees": []
-            },
-            {
-              "name": "readCalleeName",
-              "summary": "Extracts the name being called from a call expression in a Tree-sitter node.",
-              "line": 175,
-              "callers": [
-                "parse"
-              ],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/graph/ListPanel.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "ListPanel",
-          "kind": "class",
-          "summary": "A webview panel for displaying a list of code locations with interactive rows.",
-          "line": 26,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the ListPanel with an extension URI.",
-              "line": 30,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "show",
-              "summary": "Displays the panel with given content, creating it if necessary and updating its HTML and message handler.",
-              "line": 32,
-              "callers": [
-                "constructor",
-                "activateInternal"
-              ],
-              "callees": [
-                "handleMessage",
-                "buildHtml"
-              ]
-            },
-            {
-              "name": "handleMessage",
-              "summary": "Handles messages from the webview, specifically opening files when a row is clicked.",
-              "line": 54,
-              "callers": [
-                "show"
-              ],
-              "callees": []
-            },
-            {
-              "name": "buildHtml",
-              "summary": "Generates the HTML for the webview, including styles and script to handle rendering and interactions.",
-              "line": 77,
-              "callers": [
-                "show"
-              ],
-              "callees": [
-                "makeNonce"
-              ]
-            },
-            {
-              "name": "makeNonce",
-              "summary": "Creates a nonce for Content Security Policy to enhance security by preventing XSS attacks.",
-              "line": 177,
-              "callers": [
-                "buildHtml"
-              ],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/graph/GraphPanel.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "GraphPanel",
-          "kind": "class",
-          "summary": "Manages the display of a graph panel in VSCode to show the impact of code symbols.",
-          "line": 13,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the GraphPanel with an extension URI and a function to get the current code graph.",
-              "line": 16,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "show",
-              "summary": "Opens or reveals the webview panel and renders the impact of a specified symbol.",
-              "line": 22,
-              "callers": [
-                "constructor",
-                "activateInternal"
-              ],
-              "callees": [
-                "handleMessage",
-                "buildHtml",
-                "renderImpact"
-              ]
-            },
-            {
-              "name": "renderImpact",
-              "summary": "Computes the impact of a symbol and sends it to the webview for rendering.",
-              "line": 49,
-              "callers": [
-                "show",
-                "handleMessage"
-              ],
-              "callees": [
-                "getGraph",
-                "analyze",
-                "analyze"
-              ]
-            },
-            {
-              "name": "handleMessage",
-              "summary": "Handles messages from the webview, such as focusing on another node or opening a file.",
-              "line": 61,
-              "callers": [
-                "show"
-              ],
-              "callees": [
-                "getGraph",
-                "renderImpact"
-              ]
-            },
-            {
-              "name": "buildHtml",
-              "summary": "Constructs the HTML content for the webview, including the CSP and Cytoscape script tags.",
-              "line": 102,
-              "callers": [
-                "show"
-              ],
-              "callees": [
-                "makeNonce"
-              ]
-            },
-            {
-              "name": "makeNonce",
-              "summary": "Generates a nonce for Content Security Policy to enhance security.",
-              "line": 219,
-              "callers": [
-                "buildHtml"
-              ],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/graph/ImpactAnalyzer.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "ImpactAnalyzer",
-          "kind": "class",
-          "summary": "A class that analyzes the impact of changes in a code graph by traversing relationships between nodes.",
-          "line": 15,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes an instance with a CodeGraph, which is used for all analysis operations.",
-              "line": 16,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "analyze",
-              "summary": "Computes the full impact of changing a symbol, including direct callers, callees, and transitively affected nodes.",
-              "line": 20,
-              "callers": [
-                "relationships",
-                "provideCodeLenses",
-                "renderImpact",
-                "activateInternal"
-              ],
-              "callees": [
-                "findNode",
-                "callersOf",
-                "calleesOf",
-                "affectedBy"
-              ]
-            },
-            {
-              "name": "blastRadiusForFile",
-              "summary": "Calculates how many distinct files would be affected if a symbol in a specific file changes.",
-              "line": 35,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": [
-                "affectedBy"
-              ]
-            },
-            {
-              "name": "findUnusedSymbols",
-              "summary": "Identifies symbols that are not called by any other symbol, excluding framework entry points and constructors.",
-              "line": 56,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": []
-            },
-            {
-              "name": "callersOf",
-              "summary": "Finds all symbols that directly call or import a given symbol.",
-              "line": 69,
-              "callers": [
-                "analyze"
-              ],
-              "callees": [
-                "nodesByIds"
-              ]
-            },
-            {
-              "name": "calleesOf",
-              "summary": "Finds all symbols that a given symbol directly calls or imports.",
-              "line": 77,
-              "callers": [
-                "analyze"
-              ],
-              "callees": [
-                "nodesByIds"
-              ]
-            },
-            {
-              "name": "affectedBy",
-              "summary": "Recursively finds all symbols affected by changing a given symbol, following caller relationships.",
-              "line": 86,
-              "callers": [
-                "analyze",
-                "blastRadiusForFile"
-              ],
-              "callees": [
-                "nodesByIds"
-              ]
-            },
-            {
-              "name": "findNode",
-              "summary": "Retrieves a node from the graph by its ID, returning null if not found.",
-              "line": 103,
-              "callers": [
-                "analyze",
-                "nodesByIds"
-              ],
-              "callees": []
-            },
-            {
-              "name": "nodesByIds",
-              "summary": "Converts an array of node IDs into an array of CodeNode objects.",
-              "line": 107,
-              "callers": [
-                "callersOf",
-                "calleesOf",
-                "affectedBy"
-              ],
-              "callees": [
-                "findNode"
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    "src/extension.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "activate",
-          "kind": "function",
-          "summary": "Initializes and activates the extension, handling errors gracefully.",
-          "line": 46,
-          "callers": [],
-          "callees": [
-            "activateInternal"
-          ]
-        },
-        {
-          "name": "activateInternal",
-          "kind": "function",
-          "summary": "Handles the core initialization logic of the extension, setting up analysis and UI components.",
-          "line": 58,
-          "callers": [
-            "activate"
-          ],
-          "callees": [
-            "present",
-            "render",
-            "refresh",
-            "refresh",
-            "getGraph",
-            "analyze",
-            "analyze",
-            "blastRadiusForFile",
-            "show",
-            "show",
-            "show",
-            "getLanguages",
-            "getAll",
-            "clear",
-            "clear",
-            "clearAll",
-            "generateProjectConfig",
-            "summarizeWorkspace",
-            "build",
-            "exportToFile",
-            "generate",
-            "generate",
-            "findUnusedSymbols",
-            "shouldAnalyzeOnSave",
-            "get",
-            "remove"
-          ]
-        },
-        {
-          "name": "deactivate",
-          "kind": "function",
-          "summary": "Cleans up resources when the extension is deactivated.",
-          "line": 462,
-          "callers": [],
-          "callees": []
-        },
-        {
-          "name": "langToExts",
-          "kind": "function",
-          "summary": "Maps programming languages to their file extensions.",
-          "line": 467,
-          "callers": [],
-          "callees": []
-        },
-        {
-          "name": "generateProjectConfig",
-          "kind": "function",
-          "summary": "Creates a configuration object for project settings.",
-          "line": 480,
-          "callers": [
-            "activateInternal"
-          ],
-          "callees": []
-        }
-      ]
-    },
-    "src/providers/CodeActionsProvider.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "CodeActionsProvider",
-          "kind": "class",
-          "summary": "Provides code actions (fixes and explanations) for flagged lines in a document.",
-          "line": 22,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the CodeActionsProvider with dependencies like IResultStore and AiScanner, registering commands for fix and explain actions.",
-              "line": 26,
-              "callers": [],
-              "callees": [
-                "applyFix",
-                "explainIssue"
-              ]
-            },
-            {
-              "name": "provideCodeActions",
-              "summary": "Generates quick fixes and explanations as code actions based on diagnostics from VS Code.",
-              "line": 50,
-              "callers": [],
-              "callees": [
-                "get"
-              ]
-            },
-            {
-              "name": "applyFix",
-              "summary": "Asks AI to generate a fix for an issue, then prompts user to apply or preview the change.",
-              "line": 87,
-              "callers": [
-                "constructor"
-              ],
-              "callees": [
-                "generateText",
-                "showDiff"
-              ]
-            },
-            {
-              "name": "showDiff",
-              "summary": "Opens a diff editor showing the changes between original and fixed code snippets.",
-              "line": 131,
-              "callers": [
-                "applyFix"
-              ],
-              "callees": [
-                "parse",
-                "dispose"
-              ]
-            },
-            {
-              "name": "explainIssue",
-              "summary": "Opens a panel with an explanation of why an issue is problematic and how to fix it.",
-              "line": 153,
-              "callers": [
-                "constructor"
-              ],
-              "callees": [
-                "generateText",
-                "show"
-              ]
-            },
-            {
-              "name": "dispose",
-              "summary": "Disposes of all disposables registered during initialization, cleaning up resources.",
-              "line": 178,
-              "callers": [
-                "showDiff"
-              ],
-              "callees": []
-            }
-          ]
-        },
-        {
-          "name": "ExplainPanel",
-          "kind": "class",
-          "summary": "A custom panel for displaying explanations in Markdown format.",
-          "line": 184,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "show",
-              "summary": "method \"show\" defined in src/providers/CodeActionsProvider.ts at line 187.",
-              "line": 187,
-              "callers": [
-                "constructor",
-                "activateInternal",
-                "explainIssue"
-              ],
-              "callees": [
-                "mdToHtml"
-              ]
-            },
-            {
-              "name": "mdToHtml",
-              "summary": "method \"mdToHtml\" defined in src/providers/CodeActionsProvider.ts at line 236.",
-              "line": 236,
-              "callers": [
-                "show"
-              ],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/providers/DashboardProvider.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "DashboardProvider",
-          "kind": "class",
-          "summary": "A class that implements vscode.WebviewViewProvider and vscode.Disposable to render a sidebar dashboard webview.",
-          "line": 12,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the DashboardProvider with a ResultStore instance.",
-              "line": 16,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "resolveWebviewView",
-              "summary": "Sets up the webview view, enabling scripts and setting initial HTML content. Handles incoming messages by calling handleMessage.",
-              "line": 18,
-              "callers": [],
-              "callees": [
-                "buildHtml",
-                "handleMessage"
-              ]
-            },
-            {
-              "name": "refresh",
-              "summary": "Rebuilds and updates the webview's HTML content based on current data from the store.",
-              "line": 28,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": [
-                "buildHtml"
-              ]
-            },
-            {
-              "name": "handleMessage",
-              "summary": "Processes messages received from the webview, executing corresponding commands if they are in an allowed list.",
-              "line": 36,
-              "callers": [
-                "resolveWebviewView"
-              ],
-              "callees": [
-                "parse"
-              ]
-            },
-            {
-              "name": "buildHtml",
-              "summary": "Generates the HTML content for the dashboard, including summary statistics, category breakdown, and file issue lists.",
-              "line": 77,
-              "callers": [
-                "resolveWebviewView",
-                "refresh"
-              ],
-              "callees": [
-                "getAll",
-                "computeSummary",
-                "buildFileCard",
-                "catLabel"
-              ]
-            },
-            {
-              "name": "buildFileCard",
-              "summary": "Creates an HTML card for each file with issues, displaying relevant details.",
-              "line": 277,
-              "callers": [
-                "buildHtml"
-              ],
-              "callees": [
-                "sevDot",
-                "esc"
-              ]
-            },
-            {
-              "name": "computeSummary",
-              "summary": "Calculates summary statistics based on the current results stored in the ResultStore.",
-              "line": 308,
-              "callers": [
-                "buildHtml"
-              ],
-              "callees": []
-            },
-            {
-              "name": "catLabel",
-              "summary": "Converts an IssueCategory enum value to a human-readable label.",
-              "line": 328,
-              "callers": [
-                "buildHtml"
-              ],
-              "callees": []
-            },
-            {
-              "name": "sevDot",
-              "summary": "Generates a colored dot representing the severity of an issue.",
-              "line": 335,
-              "callers": [
-                "buildFileCard"
-              ],
-              "callees": []
-            },
-            {
-              "name": "esc",
-              "summary": "Escapes HTML content to prevent XSS attacks.",
-              "line": 339,
-              "callers": [
-                "buildFileCard"
-              ],
-              "callees": []
-            },
-            {
-              "name": "dispose",
-              "summary": "Cleans up resources when the DashboardProvider is disposed.",
-              "line": 343,
-              "callers": [],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/config/ConfigManager.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "ConfigManager",
-          "kind": "class",
-          "summary": "Manages configuration settings for AI analysis in a VS Code extension.",
-          "line": 5,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "cfg",
-              "summary": "Retrieves the VS Code workspace configuration object for 'codeSec'.",
-              "line": 8,
-              "callers": [
-                "getAiProvider",
-                "getAiModel",
-                "getAiApiKey",
-                "getAiBaseUrl",
-                "isAiEnabled",
-                "isStaticEnabled",
-                "getComplexityThreshold",
-                "getDuplicateThreshold",
-                "getLanguages",
-                "shouldAnalyzeOnSave"
-              ],
-              "callees": []
-            },
-            {
-              "name": "getAiProvider",
-              "summary": "Returns the configured AI backend provider (e.g., ollama, openrouter).",
-              "line": 13,
-              "callers": [
-                "scan",
-                "generateText"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "getAiModel",
-              "summary": "Returns the model name to use with the AI provider, or an empty string if using the default.",
-              "line": 18,
-              "callers": [
-                "scan",
-                "generateText"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "getAiApiKey",
-              "summary": "Returns the API key for cloud-based AI providers, or an empty string if not needed.",
-              "line": 23,
-              "callers": [
-                "scan",
-                "generateText"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "getAiBaseUrl",
-              "summary": "Overrides the default base URL for AI requests if running on a different port.",
-              "line": 28,
-              "callers": [
-                "scan",
-                "generateText"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "isAiEnabled",
-              "summary": "Determines whether AI analysis is enabled by the user.",
-              "line": 33,
-              "callers": [
-                "scan",
-                "runPhased"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "isStaticEnabled",
-              "summary": "Checks if built-in static regex rules should be run.",
-              "line": 38,
-              "callers": [
-                "runPhased"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "getComplexityThreshold",
-              "summary": "Sets the complexity score threshold above which functions are flagged.",
-              "line": 43,
-              "callers": [
-                "scan"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "getDuplicateThreshold",
-              "summary": "Defines the minimum line length for duplicate code blocks to be flagged.",
-              "line": 48,
-              "callers": [
-                "scanWithBlocks"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "getLanguages",
-              "summary": "Lists programming languages that should be analyzed by the AI.",
-              "line": 53,
-              "callers": [
-                "activateInternal",
-                "analyze"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            },
-            {
-              "name": "shouldAnalyzeOnSave",
-              "summary": "Determines if analysis should trigger automatically on file save.",
-              "line": 65,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": [
-                "get",
-                "cfg"
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    "src/AnalysisOrchestrator.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "AnalysisOrchestrator",
-          "kind": "class",
-          "summary": "Coordinates the four scanners (Static, Complexity, Duplicate, AI) and persists the result.",
-          "line": 11,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the orchestrator with dependencies like store, config, and scanners.",
-              "line": 16,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "analyze",
-              "summary": "Analyzes a document by running static checks immediately and AI checks in the background.",
-              "line": 26,
-              "callers": [
-                "relationships",
-                "provideCodeLenses",
-                "renderImpact",
-                "activateInternal"
-              ],
-              "callees": [
-                "getLanguages",
-                "debounced",
-                "runPhased"
-              ]
-            },
-            {
-              "name": "runPhased",
-              "summary": "Executes two phases of analysis: static rules first, then AI rules asynchronously.",
-              "line": 38,
-              "callers": [
-                "analyze",
-                "debounced"
-              ],
-              "callees": [
-                "isStaticEnabled",
-                "scan",
-                "scan",
-                "scan",
-                "scan",
-                "scanWithBlocks",
-                "removeCrossRulesetDuplicates",
-                "deduplicate",
-                "getAverageComplexity",
-                "save",
-                "isAiEnabled",
-                "runAiPhase"
-              ]
-            },
-            {
-              "name": "runAiPhase",
-              "summary": "Runs AI analysis on a document and merges its results with existing static findings.",
-              "line": 86,
-              "callers": [
-                "runPhased"
-              ],
-              "callees": [
-                "scan",
-                "scan",
-                "scan",
-                "scan",
-                "filterAiDuplicates",
-                "deduplicate",
-                "save"
-              ]
-            },
-            {
-              "name": "removeCrossRulesetDuplicates",
-              "summary": "Handles duplicate issues across different rule sets (e.g., React vs. JS).",
-              "line": 123,
-              "callers": [
-                "runPhased"
-              ],
-              "callees": [
-                "get"
-              ]
-            },
-            {
-              "name": "filterAiDuplicates",
-              "summary": "Filters out AI issues that are already covered by static rules, considering line proximity and concept matching.",
-              "line": 167,
-              "callers": [
-                "runAiPhase"
-              ],
-              "callees": [
-                "keyWords",
-                "sameRootConcept"
-              ]
-            },
-            {
-              "name": "sameRootConcept",
-              "summary": "Determines if two issues have the same root concept for deduplication purposes.",
-              "line": 203,
-              "callers": [
-                "filterAiDuplicates"
-              ],
-              "callees": []
-            },
-            {
-              "name": "keyWords",
-              "summary": "Not explicitly defined in the provided code snippet.",
-              "line": 238,
-              "callers": [
-                "filterAiDuplicates"
-              ],
-              "callees": []
-            },
-            {
-              "name": "deduplicate",
-              "summary": "Removes duplicate issues from a list based on their content and location.",
-              "line": 256,
-              "callers": [
-                "runPhased",
-                "runAiPhase"
-              ],
-              "callees": []
-            },
-            {
-              "name": "debounced",
-              "summary": "Debounces the analyze method to prevent frequent re-analysis of documents.",
-              "line": 266,
-              "callers": [
-                "analyze"
-              ],
-              "callees": [
-                "get",
-                "runPhased"
-              ]
-            },
-            {
-              "name": "dispose",
-              "summary": "Cleans up resources used by the orchestrator.",
-              "line": 283,
-              "callers": [],
-              "callees": []
-            }
-          ]
-        }
-      ]
-    },
-    "src/context/FileSummarizer.ts": {
-      "summary": "No file summary available — run Summarize Project Files.",
-      "symbols": [
-        {
-          "name": "FileSummarizer",
-          "kind": "class",
-          "summary": "A class that generates and caches one-line AI summaries for files in a workspace.",
-          "line": 20,
-          "callers": [],
-          "callees": [],
-          "methods": [
-            {
-              "name": "constructor",
-              "summary": "Initializes the FileSummarizer with an AI scanner and VS Code extension context.",
-              "line": 24,
-              "callers": [],
-              "callees": []
-            },
-            {
-              "name": "summarizeWorkspace",
-              "summary": "Asynchronously summarizes every file in the workspace, skipping cached files, and updates the cache.",
-              "line": 30,
-              "callers": [
-                "activateInternal"
-              ],
-              "callees": [
-                "loadCache",
-                "hashString",
-                "get",
-                "generateText",
-                "saveCache",
-                "getSummaries"
-              ]
-            },
-            {
-              "name": "getSummaries",
-              "summary": "Returns the current summaries as a flat map of file paths to summaries.",
-              "line": 96,
-              "callers": [
-                "generate",
-                "summarizeWorkspace"
-              ],
-              "callees": [
-                "loadCache"
-              ]
-            },
-            {
-              "name": "loadCache",
-              "summary": "Loads summaries from a cache file into memory if they haven't been loaded yet.",
-              "line": 101,
-              "callers": [
-                "summarizeWorkspace",
-                "getSummaries"
-              ],
-              "callees": [
-                "getCachePath",
-                "parse"
-              ]
-            },
-            {
-              "name": "saveCache",
-              "summary": "Saves the current summaries to a cache file for future use.",
-              "line": 116,
-              "callers": [
-                "summarizeWorkspace"
-              ],
-              "callees": [
-                "getCachePath"
-              ]
-            },
-            {
-              "name": "getCachePath",
-              "summary": "Determines the path to the cache file based on the extension context's global storage URI.",
-              "line": 127,
-              "callers": [
-                "loadCache",
-                "saveCache"
-              ],
-              "callees": []
-            },
-            {
-              "name": "hashString",
-              "summary": "Generates a hash value for a string, used to check if a file's content has changed since last summary.",
-              "line": 131,
-              "callers": [
-                "summarizeWorkspace"
               ],
               "callees": []
             }
