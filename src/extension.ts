@@ -20,8 +20,6 @@ import { CodeActionsProvider }  from './providers/CodeActionsProvider';
 
 // Context / AI assist
 import { FileSummarizer }       from './context/FileSummarizer';
-import { ContextPicker }        from './context/ContextPicker';
-import { AiContextGenerator }   from './context/AiContextGenerator';
 
 // Code graph feature
 import { LanguageParser }       from './graph/LanguageParser';
@@ -29,6 +27,12 @@ import { CodeGraphBuilder }     from './graph/CodeGraphBuilder';
 import { ImpactAnalyzer }       from './graph/ImpactAnalyzer';
 import { GraphPanel }           from './graph/GraphPanel';
 import { ImpactCodeLens }       from './graph/ImpactCodeLens';
+
+// Reports
+import { ProblemsReporter }     from './reports/ProblemsReporter';
+import { UnderstandingGenerator } from './reports/UnderstandingGenerator';
+import { ListPanel }            from './graph/ListPanel';
+import { ListRow }              from './graph/ListPanel';
 
 import { FileAnalysisResult }   from './types';
 
@@ -85,8 +89,17 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // --- Context / AI assist (now graph-backed) ---
   const summarizer   = new FileSummarizer(ai, context);
-  const contextPicker = new ContextPicker(() => graphBuilder.getGraph(), summarizer);
-  const aiContextGen  = new AiContextGenerator(() => graphBuilder.getGraph(), summarizer);
+
+  // Problems report writer (reads ResultStore, names functions via the graph)
+  const problemsReporter = new ProblemsReporter(store, () => graphBuilder.getGraph());
+
+  // One reusable list panel for Build Graph / Find Unused / Blast Radius.
+  const listPanel = new ListPanel(context.extensionUri);
+
+  // Structured project-understanding document generator.
+  const understanding = new UnderstandingGenerator(
+    () => graphBuilder.getGraph(), summarizer, ai,
+  );
 
   // Blast-radius status bar item (now computed from the graph).
   const blastBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
@@ -229,39 +242,6 @@ function activateInternal(context: vscode.ExtensionContext): void {
     }),
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.generateAiContext', async () => {
-      try { await aiContextGen.generate(); }
-      catch (e) { vscode.window.showErrorMessage(`Codescape: AI context generation failed — ${e}`); }
-    }),
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.copyAiContext', async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return; }
-      try {
-        const text = await contextPicker.buildContext(editor);
-        await vscode.env.clipboard.writeText(text);
-        vscode.window.showInformationMessage(`Codescape: Context copied (~${Math.round(text.length / 4)} tokens).`);
-      } catch (e) {
-        vscode.window.showErrorMessage(`Codescape: Context build failed — ${e}`);
-      }
-    }),
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.copyLightContext', async () => {
-      try {
-        const text = await contextPicker.buildLightContext();
-        await vscode.env.clipboard.writeText(text);
-        vscode.window.showInformationMessage(`Codescape: Light context copied (~${Math.round(text.length / 4)} tokens).`);
-      } catch (e) {
-        vscode.window.showErrorMessage(`Codescape: Light context failed — ${e}`);
-      }
-    }),
-  );
-
   // --- Code graph commands ---
   context.subscriptions.push(
     vscode.commands.registerCommand('codescape.buildGraph', async () => {
@@ -272,8 +252,34 @@ function activateInternal(context: vscode.ExtensionContext): void {
           codeLens.refresh();
         },
       );
-      const n = graphBuilder.getGraph().nodes.length;
-      vscode.window.showInformationMessage(`Codescape: Code graph ready — ${n} symbol(s) indexed.`);
+
+      const graph = graphBuilder.getGraph();
+      if (graph.nodes.length === 0) {
+        vscode.window.showWarningMessage('Codescape: No symbols found to graph.');
+        return;
+      }
+
+      // Show every symbol as a clickable row, with how many other symbols
+      // each one connects to, so the overview is useful at a glance.
+      const rows: ListRow[] = graph.nodes
+        .map(node => {
+          const degree = graph.edges.filter(e => e.from === node.id || e.to === node.id).length;
+          return {
+            label: node.name,
+            detail: `${node.kind} · ${node.file}:${node.line + 1}`,
+            file: node.file,
+            line: node.line,
+            badge: degree > 0 ? `${degree} link${degree === 1 ? '' : 's'}` : undefined,
+            tone: 'normal' as const,
+          };
+        })
+        .sort((a, b) => a.detail.localeCompare(b.detail));
+
+      listPanel.show({
+        title: 'Code Graph',
+        intro: `${graph.nodes.length} symbol(s), ${graph.edges.length} relationship(s). Click any symbol to open it.`,
+        rows,
+      });
     }),
   );
 
@@ -295,7 +301,18 @@ function activateInternal(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Show which files depend on the active file.
+  // Write a project-wide problems report (markdown + json).
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.reportIssues', async () => {
+      try {
+        await problemsReporter.generate();
+      } catch (e) {
+        vscode.window.showErrorMessage(`Codescape: Report failed — ${e}`);
+      }
+    }),
+  );
+
+  // Show which files depend on the active file, as a clickable list.
   context.subscriptions.push(
     vscode.commands.registerCommand('codescape.showBlastRadius', () => {
       const editor = vscode.window.activeTextEditor;
@@ -303,49 +320,71 @@ function activateInternal(context: vscode.ExtensionContext): void {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!root) return;
 
-      const relFile  = path.relative(root, editor.document.uri.fsPath);
-      const analyzer = new ImpactAnalyzer(graphBuilder.getGraph());
-      const count    = analyzer.blastRadiusForFile(relFile);
+      const relFile = path.relative(root, editor.document.uri.fsPath);
+      const graph   = graphBuilder.getGraph();
 
-      vscode.window.showInformationMessage(
-        count === 0
-          ? `Codescape: "${path.basename(relFile)}" has no dependents — safe to change.`
-          : `Codescape: changing "${path.basename(relFile)}" affects ${count} other file(s).`,
-      );
+      // Symbols defined in this file.
+      const ownIds = new Set(graph.nodes.filter(n => n.file === relFile).map(n => n.id));
+
+      // Symbols in other files that call into this file's symbols.
+      const dependents = graph.nodes.filter(node => {
+        if (node.file === relFile) return false;
+        return graph.edges.some(e => e.from === node.id && ownIds.has(e.to));
+      });
+
+      const rows: ListRow[] = dependents.map(node => ({
+        label: node.name,
+        detail: `${node.kind} · ${node.file}:${node.line + 1}`,
+        file: node.file,
+        line: node.line,
+        tone: 'danger' as const,
+      }));
+
+      listPanel.show({
+        title: `Blast Radius — ${path.basename(relFile)}`,
+        intro: dependents.length === 0
+          ? 'No other file depends on this one — safe to change.'
+          : `${dependents.length} symbol(s) in other files depend on this file. Review before changing.`,
+        rows,
+      });
     }),
   );
 
-  // List symbols that nothing calls — possible dead code. Clicking one
-  // jumps to its definition. Entry points and dynamic calls may be false
-  // positives, so this is framed as "review", not "delete".
+  // List symbols that nothing calls — possible dead code. Each row opens
+  // the symbol. Entry points and dynamic calls may be false positives, so
+  // this is framed as "review", not "delete".
   context.subscriptions.push(
     vscode.commands.registerCommand('codescape.findUnused', async () => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!root) { vscode.window.showWarningMessage('Codescape: No workspace open.'); return; }
 
       const unused = new ImpactAnalyzer(graphBuilder.getGraph()).findUnusedSymbols();
-      if (unused.length === 0) {
-        vscode.window.showInformationMessage('Codescape: No unused symbols found.');
-        return;
-      }
 
-      const items = unused.map(node => ({
+      const rows: ListRow[] = unused.map(node => ({
         label: node.name,
-        description: `${node.kind} · ${node.file}:${node.line + 1}`,
-        node,
+        detail: `${node.kind} · ${node.file}:${node.line + 1}`,
+        file: node.file,
+        line: node.line,
+        tone: 'warn' as const,
       }));
 
-      const pick = await vscode.window.showQuickPick(items, {
-        title: `${unused.length} possibly-unused symbol(s) — review before deleting`,
-        placeHolder: 'No callers found in the graph. Entry points and dynamic calls may be false positives.',
+      listPanel.show({
+        title: 'Possibly Unused Symbols',
+        intro: unused.length === 0
+          ? 'No unused symbols found.'
+          : `${unused.length} symbol(s) have no callers in the graph. Entry points and dynamic calls may be false positives — review before deleting.`,
+        rows,
       });
+    }),
+  );
 
-      if (pick) {
-        const uri = vscode.Uri.file(path.join(root, pick.node.file));
-        const editor = await vscode.window.showTextDocument(uri);
-        const pos = new vscode.Position(pick.node.line, 0);
-        editor.selection = new vscode.Selection(pos, pos);
-        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+  // Write the structured project-understanding document (nested JSON).
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.generateUnderstanding', async () => {
+      try {
+        await understanding.generate();
+      } catch (e) {
+        vscode.window.showErrorMessage(`Codescape: Understanding doc failed — ${e}`);
       }
     }),
   );

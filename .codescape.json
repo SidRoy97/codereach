@@ -1,0 +1,18 @@
+{
+  "aiProvider": "ollama",
+  "aiModel": "qwen2.5-coder:7b",
+  "complexityThreshold": 10,
+  "duplicateLineThreshold": 6,
+  "languages": [
+    "javascript",
+    "typescript",
+    "python",
+    "java"
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.min.js"
+  ],
+  "disabledRules": []
+}

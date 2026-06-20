@@ -43,6 +43,62 @@
       "line": 31
     },
     {
+      "id": "src/reports/ProblemsReporter.ts::ProblemsReporter",
+      "name": "ProblemsReporter",
+      "kind": "class",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 27
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::constructor",
+      "name": "constructor",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 28
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::generate",
+      "name": "generate",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 34
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::buildReport",
+      "name": "buildReport",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 63
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::enrich",
+      "name": "enrich",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 83
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::enclosingFunction",
+      "name": "enclosingFunction",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 98
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::toMarkdown",
+      "name": "toMarkdown",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 110
+    },
+    {
+      "id": "src/reports/ProblemsReporter.ts::toJson",
+      "name": "toJson",
+      "kind": "method",
+      "file": "src/reports/ProblemsReporter.ts",
+      "line": 166
+    },
+    {
       "id": "src/publishers/StatusBarManager.ts::StatusBarManager",
       "name": "StatusBarManager",
       "kind": "class",
@@ -537,49 +593,49 @@
       "name": "GraphPanel",
       "kind": "class",
       "file": "src/graph/GraphPanel.ts",
-      "line": 11
+      "line": 12
     },
     {
       "id": "src/graph/GraphPanel.ts::constructor",
       "name": "constructor",
       "kind": "method",
       "file": "src/graph/GraphPanel.ts",
-      "line": 14
+      "line": 15
     },
     {
       "id": "src/graph/GraphPanel.ts::show",
       "name": "show",
       "kind": "method",
       "file": "src/graph/GraphPanel.ts",
-      "line": 20
+      "line": 21
     },
     {
       "id": "src/graph/GraphPanel.ts::renderImpact",
       "name": "renderImpact",
       "kind": "method",
       "file": "src/graph/GraphPanel.ts",
-      "line": 47
+      "line": 48
     },
     {
       "id": "src/graph/GraphPanel.ts::handleMessage",
       "name": "handleMessage",
       "kind": "method",
       "file": "src/graph/GraphPanel.ts",
-      "line": 59
+      "line": 60
     },
     {
       "id": "src/graph/GraphPanel.ts::buildHtml",
       "name": "buildHtml",
       "kind": "method",
       "file": "src/graph/GraphPanel.ts",
-      "line": 77
+      "line": 101
     },
     {
       "id": "src/graph/GraphPanel.ts::makeNonce",
       "name": "makeNonce",
       "kind": "method",
       "file": "src/graph/GraphPanel.ts",
-      "line": 178
+      "line": 218
     },
     {
       "id": "src/graph/ImpactAnalyzer.ts::ImpactAnalyzer",
@@ -656,35 +712,35 @@
       "name": "activate",
       "kind": "function",
       "file": "src/extension.ts",
-      "line": 41
+      "line": 44
     },
     {
       "id": "src/extension.ts::activateInternal",
       "name": "activateInternal",
       "kind": "function",
       "file": "src/extension.ts",
-      "line": 53
+      "line": 56
     },
     {
       "id": "src/extension.ts::deactivate",
       "name": "deactivate",
       "kind": "function",
       "file": "src/extension.ts",
-      "line": 422
+      "line": 439
     },
     {
       "id": "src/extension.ts::langToExts",
       "name": "langToExts",
       "kind": "function",
       "file": "src/extension.ts",
-      "line": 427
+      "line": 444
     },
     {
       "id": "src/extension.ts::generateProjectConfig",
       "name": "generateProjectConfig",
       "kind": "function",
       "file": "src/extension.ts",
-      "line": 440
+      "line": 457
     },
     {
       "id": "src/providers/CodeActionsProvider.ts::CodeActionsProvider",
@@ -761,70 +817,84 @@
       "name": "DashboardProvider",
       "kind": "class",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 6
+      "line": 10
     },
     {
       "id": "src/providers/DashboardProvider.ts::constructor",
       "name": "constructor",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 11
+      "line": 14
     },
     {
       "id": "src/providers/DashboardProvider.ts::resolveWebviewView",
       "name": "resolveWebviewView",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 14
+      "line": 16
     },
     {
       "id": "src/providers/DashboardProvider.ts::refresh",
       "name": "refresh",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 49
+      "line": 29
     },
     {
-      "id": "src/providers/DashboardProvider.ts::render",
-      "name": "render",
+      "id": "src/providers/DashboardProvider.ts::handleMessage",
+      "name": "handleMessage",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 56
+      "line": 37
     },
     {
       "id": "src/providers/DashboardProvider.ts::buildHtml",
       "name": "buildHtml",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 62
+      "line": 82
     },
     {
       "id": "src/providers/DashboardProvider.ts::buildFileCard",
       "name": "buildFileCard",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 217
+      "line": 268
+    },
+    {
+      "id": "src/providers/DashboardProvider.ts::computeSummary",
+      "name": "computeSummary",
+      "kind": "method",
+      "file": "src/providers/DashboardProvider.ts",
+      "line": 299
     },
     {
       "id": "src/providers/DashboardProvider.ts::catLabel",
       "name": "catLabel",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 248
+      "line": 319
+    },
+    {
+      "id": "src/providers/DashboardProvider.ts::sevDot",
+      "name": "sevDot",
+      "kind": "method",
+      "file": "src/providers/DashboardProvider.ts",
+      "line": 326
     },
     {
       "id": "src/providers/DashboardProvider.ts::esc",
       "name": "esc",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 259
+      "line": 330
     },
     {
       "id": "src/providers/DashboardProvider.ts::dispose",
       "name": "dispose",
       "kind": "method",
       "file": "src/providers/DashboardProvider.ts",
-      "line": 263
+      "line": 334
     },
     {
       "id": "src/config/ConfigManager.ts::ConfigManager",
@@ -1136,6 +1206,46 @@
     }
   ],
   "edges": [
+    {
+      "from": "src/reports/ProblemsReporter.ts::generate",
+      "to": "src/ResultStore.ts::getAll",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::generate",
+      "to": "src/reports/ProblemsReporter.ts::buildReport",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::generate",
+      "to": "src/reports/ProblemsReporter.ts::toMarkdown",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::generate",
+      "to": "src/reports/ProblemsReporter.ts::toJson",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::buildReport",
+      "to": "src/graph/CodeGraphBuilder.ts::getGraph",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::buildReport",
+      "to": "src/reports/ProblemsReporter.ts::enrich",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::enrich",
+      "to": "src/reports/ProblemsReporter.ts::enclosingFunction",
+      "relation": "calls"
+    },
+    {
+      "from": "src/reports/ProblemsReporter.ts::toMarkdown",
+      "to": "src/ResultStore.ts::get",
+      "relation": "calls"
+    },
     {
       "from": "src/publishers/StatusBarManager.ts::constructor",
       "to": "src/graph/GraphPanel.ts::show",
@@ -1598,11 +1708,6 @@
     },
     {
       "from": "src/extension.ts::activateInternal",
-      "to": "src/providers/DashboardProvider.ts::render",
-      "relation": "calls"
-    },
-    {
-      "from": "src/extension.ts::activateInternal",
       "to": "src/graph/ImpactCodeLens.ts::refresh",
       "relation": "calls"
     },
@@ -1674,6 +1779,11 @@
     {
       "from": "src/extension.ts::activateInternal",
       "to": "src/context/FileSummarizer.ts::summarizeWorkspace",
+      "relation": "calls"
+    },
+    {
+      "from": "src/extension.ts::activateInternal",
+      "to": "src/reports/ProblemsReporter.ts::generate",
       "relation": "calls"
     },
     {
@@ -1773,27 +1883,32 @@
     },
     {
       "from": "src/providers/DashboardProvider.ts::resolveWebviewView",
-      "to": "src/providers/DashboardProvider.ts::render",
+      "to": "src/providers/DashboardProvider.ts::buildHtml",
       "relation": "calls"
     },
     {
       "from": "src/providers/DashboardProvider.ts::resolveWebviewView",
-      "to": "src/graph/LanguageParser.ts::parse",
+      "to": "src/providers/DashboardProvider.ts::handleMessage",
       "relation": "calls"
     },
     {
       "from": "src/providers/DashboardProvider.ts::refresh",
-      "to": "src/providers/DashboardProvider.ts::render",
+      "to": "src/providers/DashboardProvider.ts::buildHtml",
       "relation": "calls"
     },
     {
-      "from": "src/providers/DashboardProvider.ts::render",
-      "to": "src/providers/DashboardProvider.ts::buildHtml",
+      "from": "src/providers/DashboardProvider.ts::handleMessage",
+      "to": "src/graph/LanguageParser.ts::parse",
       "relation": "calls"
     },
     {
       "from": "src/providers/DashboardProvider.ts::buildHtml",
       "to": "src/ResultStore.ts::getAll",
+      "relation": "calls"
+    },
+    {
+      "from": "src/providers/DashboardProvider.ts::buildHtml",
+      "to": "src/providers/DashboardProvider.ts::computeSummary",
       "relation": "calls"
     },
     {
@@ -1804,6 +1919,11 @@
     {
       "from": "src/providers/DashboardProvider.ts::buildHtml",
       "to": "src/providers/DashboardProvider.ts::catLabel",
+      "relation": "calls"
+    },
+    {
+      "from": "src/providers/DashboardProvider.ts::buildFileCard",
+      "to": "src/providers/DashboardProvider.ts::sevDot",
       "relation": "calls"
     },
     {

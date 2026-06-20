@@ -98,19 +98,6 @@ export class FileSummarizer {
     return new Map(Array.from(this.cache.entries()).map(([k, v]) => [k, v.summary]));
   }
 
-  // Format all summaries as a compact comment block for pasting into AI.
-  formatForAi(): string {
-    const summaries = this.getSummaries();
-    if (summaries.size === 0) {
-      return '// No summaries yet. Run: Codescape: Summarize Project Files';
-    }
-    const lines = ['// FILE SUMMARIES', ''];
-    for (const [file, summary] of summaries) {
-      lines.push(`// ${file.padEnd(50)} ${summary}`);
-    }
-    return lines.join('\n');
-  }
-
   private loadCache(): void {
     if (this.loaded) return;
     this.loaded = true;

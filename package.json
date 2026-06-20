@@ -1,8 +1,8 @@
 {
-  "name": "codescape-ai",
-  "displayName": "Codescape — AI Code Quality & Impact Graph",
+  "name": "codescape-vscode",
+  "displayName": "Codescape \u2014 AI Code Quality & Impact Graph",
   "description": "Security, code quality, SOLID analysis, AI-powered fixes, and an interactive code impact graph. Works with Ollama, Groq, HuggingFace, and more.",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "publisher": "SidRoy300497",
   "license": "MIT",
   "repository": {
@@ -56,16 +56,8 @@
         "title": "Codescape: Explain this Issue"
       },
       {
-        "command": "codescape.copyAiContext",
-        "title": "Codescape: Copy AI Context for Selected Symbol"
-      },
-      {
-        "command": "codescape.copyLightContext",
-        "title": "Codescape: Copy Light Context (Summaries Only)"
-      },
-      {
-        "command": "codescape.generateAiContext",
-        "title": "Codescape: Generate AI Context File (AGENTS.md)"
+        "command": "codescape.generateUnderstanding",
+        "title": "Codescape: Generate Code Understanding Doc"
       },
       {
         "command": "codescape.summarizeFiles",
@@ -82,6 +74,10 @@
       {
         "command": "codescape.findUnused",
         "title": "Codescape: Find Unused Symbols"
+      },
+      {
+        "command": "codescape.reportIssues",
+        "title": "Codescape: Generate Problems Report"
       },
       {
         "command": "codescape.showBlastRadius",
@@ -103,11 +99,11 @@
             "openai-compatible"
           ],
           "enumDescriptions": [
-            "Local models via Ollama — 100% free, no account, no key",
-            "Groq cloud — free account, no credit card, very fast",
-            "Hugging Face Inference API — free account, huge model selection",
-            "OpenRouter — free tier models available",
-            "Anthropic Claude — paid API key required",
+            "Local models via Ollama \u2014 100% free, no account, no key",
+            "Groq cloud \u2014 free account, no credit card, very fast",
+            "Hugging Face Inference API \u2014 free account, huge model selection",
+            "OpenRouter \u2014 free tier models available",
+            "Anthropic Claude \u2014 paid API key required",
             "Any OpenAI-compatible server (LM Studio, vLLM, llama.cpp)"
           ],
           "markdownDescription": "Which AI backend to use.\n\n**Free options:** `ollama` (no account), `groq` (free account), `huggingface` (free account)"
@@ -145,7 +141,7 @@
         "codescape.complexityThreshold": {
           "type": "number",
           "default": 10,
-          "description": "Cyclomatic complexity threshold — functions above this are flagged."
+          "description": "Cyclomatic complexity threshold \u2014 functions above this are flagged."
         },
         "codescape.duplicateLineThreshold": {
           "type": "number",

@@ -61,6 +61,8 @@ const CodeGraphBuilder_1 = require("./graph/CodeGraphBuilder");
 const ImpactAnalyzer_1 = require("./graph/ImpactAnalyzer");
 const GraphPanel_1 = require("./graph/GraphPanel");
 const ImpactCodeLens_1 = require("./graph/ImpactCodeLens");
+// Reports
+const ProblemsReporter_1 = require("./reports/ProblemsReporter");
 // Languages Codescape analyzes and graphs.
 const SUPPORTED_LANGUAGES = [
     'javascript', 'javascriptreact',
@@ -122,6 +124,8 @@ function activateInternal(context) {
     const summarizer = new FileSummarizer_1.FileSummarizer(ai, context);
     const contextPicker = new ContextPicker_1.ContextPicker(() => graphBuilder.getGraph(), summarizer);
     const aiContextGen = new AiContextGenerator_1.AiContextGenerator(() => graphBuilder.getGraph(), summarizer);
+    // Problems report writer (reads ResultStore, names functions via the graph)
+    const problemsReporter = new ProblemsReporter_1.ProblemsReporter(store, () => graphBuilder.getGraph());
     // Blast-radius status bar item (now computed from the graph).
     const blastBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
     blastBar.command = 'codescape.showBlastRadius';
@@ -288,6 +292,15 @@ function activateInternal(context) {
     // Opened by the CodeLens above each function.
     context.subscriptions.push(vscode.commands.registerCommand('codescape.showImpact', (nodeId) => {
         graphPanel.show(nodeId);
+    }));
+    // Write a project-wide problems report (markdown + json).
+    context.subscriptions.push(vscode.commands.registerCommand('codescape.reportIssues', async () => {
+        try {
+            await problemsReporter.generate();
+        }
+        catch (e) {
+            vscode.window.showErrorMessage(`Codescape: Report failed — ${e}`);
+        }
     }));
     // Show which files depend on the active file.
     context.subscriptions.push(vscode.commands.registerCommand('codescape.showBlastRadius', () => {

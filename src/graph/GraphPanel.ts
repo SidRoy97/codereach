@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ImpactAnalyzer } from './ImpactAnalyzer';
 import { CodeGraph } from './CodeGraphTypes';
 
@@ -61,7 +62,7 @@ export class GraphPanel {
     if (!message || typeof message !== 'object') return;
     const msg = message as Record<string, unknown>;
 
-    // The only action: re-center on another node the user clicked.
+    // Re-center on another node the user clicked.
     if (msg.type === 'focus' && typeof msg.nodeId === 'string') {
       // Security: only act if the id is a real node in the current graph.
       // This stops a compromised webview from passing an arbitrary string.
@@ -69,6 +70,29 @@ export class GraphPanel {
       if (exists) {
         this.renderImpact(msg.nodeId);
       }
+      return;
+    }
+
+    // Open the file for a node, scrolled to its definition line.
+    if (msg.type === 'open' && typeof msg.nodeId === 'string') {
+      // Security: resolve the line/file from our own graph, never from the
+      // message, so the webview can only open real, known nodes.
+      const node = this.getGraph().nodes.find(n => n.id === msg.nodeId);
+      if (!node) return;
+
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!root) return;
+
+      const uri = vscode.Uri.file(path.join(root, node.file));
+      vscode.window.showTextDocument(uri, {
+        selection: new vscode.Range(node.line, 0, node.line, 0),
+        viewColumn: vscode.ViewColumn.One,
+      }).then(editor => {
+        editor.revealRange(
+          new vscode.Range(node.line, 0, node.line, 0),
+          vscode.TextEditorRevealType.InCenter,
+        );
+      });
     }
   }
 
@@ -118,21 +142,28 @@ export class GraphPanel {
   function renderImpact(impact) {
     const elements = [];
 
+    // Build a two-line label: symbol name on top, file basename below.
+    function labelFor(node) {
+      const base = node.file ? node.file.split('/').pop() : '';
+      return node.name + (base ? '\n' + base : '');
+    }
+
     // Centre node — the symbol being changed.
-    elements.push({ data: { id: impact.target.id, label: impact.target.name, role: 'target' } });
+    elements.push({ data: { id: impact.target.id, label: labelFor(impact.target), role: 'target' } });
 
     // Direct callers and callees as neighbours.
     for (const node of impact.directCallers) {
-      elements.push({ data: { id: node.id, label: node.name, role: 'caller' } });
+      elements.push({ data: { id: node.id, label: labelFor(node), role: 'caller' } });
       elements.push({ data: { source: node.id, target: impact.target.id } });
     }
     for (const node of impact.directCallees) {
-      elements.push({ data: { id: node.id, label: node.name, role: 'callee' } });
+      elements.push({ data: { id: node.id, label: labelFor(node), role: 'callee' } });
       elements.push({ data: { source: impact.target.id, target: node.id } });
     }
 
     document.getElementById('title').textContent =
-      'Changing ' + impact.target.name + '() affects ' + impact.affected.length + ' symbol(s)';
+      'Changing ' + impact.target.name + '() affects ' + impact.affected.length +
+      ' symbol(s) — click to re-center, double-click to open the file';
 
     if (cy) cy.destroy();
     cy = cytoscape({
@@ -142,13 +173,17 @@ export class GraphPanel {
       style: [
         { selector: 'node', style: {
             'label': 'data(label)',
-            'color': '#ccc',
+            'color': '#ddd',
             'background-color': '#555',
-            'font-size': '11px',
+            'font-size': '10px',
             'text-valign': 'center',
             'text-halign': 'center',
+            'text-wrap': 'wrap',
+            'text-justification': 'center',
+            'line-height': 1.3,
             'width': 'label',
-            'padding': '8px',
+            'height': 'label',
+            'padding': '9px',
             'shape': 'round-rectangle',
         }},
         { selector: 'node[role="target"]', style: { 'background-color': '#7c3aed' } },
@@ -164,10 +199,15 @@ export class GraphPanel {
       ],
     });
 
-    // Clicking a node asks the extension to re-center. The extension
-    // validates the id before acting, so this round trip is safe.
+    // Single click re-centers the graph on the clicked node.
     cy.on('tap', 'node', evt => {
       vscode.postMessage({ type: 'focus', nodeId: evt.target.id() });
+    });
+
+    // Double click opens that symbol's file at its definition line.
+    // The extension validates the id and resolves the line itself.
+    cy.on('dbltap', 'node', evt => {
+      vscode.postMessage({ type: 'open', nodeId: evt.target.id() });
     });
   }
 </script>
