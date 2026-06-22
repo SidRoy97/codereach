@@ -1,8 +1,8 @@
 {
-  "name": "codescape-vscode",
+  "name": "codescape-ai",
   "displayName": "Codescape — AI Code Quality & Impact Graph",
   "description": "Security, code quality, SOLID analysis, AI-powered fixes, and an interactive code impact graph. Works with Ollama, Groq, HuggingFace, and more.",
-  "version": "0.1.11",
+  "version": "0.1.2",
   "publisher": "SidRoy300497",
   "license": "MIT",
   "repository": {
