@@ -13,6 +13,11 @@ export interface ParsedSymbol {
 export interface ParsedCall {
   // The name being called, e.g. "validateToken".
   calleeName: string;
+  // The receiver the call was made on, if any: for `store.get()` this is
+  // "store"; for `this.foo()` it is "this"; for a plain `foo()` it is null.
+  // This lets the graph builder resolve which symbol a common name refers to
+  // instead of matching every symbol with that name.
+  receiver: string | null;
   // Line where the call happens.
   line: number;
 }
@@ -144,9 +149,9 @@ export class LanguageParser {
       }
 
       if (node.type === callType) {
-        const calleeName = this.readCalleeName(node);
-        if (calleeName) {
-          calls.push({ calleeName, line: node.startPosition.row });
+        const callee = this.readCallee(node);
+        if (callee) {
+          calls.push({ calleeName: callee.name, receiver: callee.receiver, line: node.startPosition.row });
         }
       }
     });
@@ -170,16 +175,28 @@ export class LanguageParser {
     return nameNode ? nameNode.text : null;
   }
 
-  // Read the name being called from a call expression node.
-  // Handles both plain calls (foo()) and member calls (obj.foo()).
-  private readCalleeName(node: Node): string | null {
+  // Read the name being called and its receiver from a call expression.
+  // Handles plain calls (foo() → name "foo", receiver null) and member calls
+  // (obj.foo() → name "foo", receiver "obj"; this.foo() → receiver "this").
+  // For chained access (a.b.foo()) the receiver is the segment just before the
+  // method ("b"), which is the most useful part for resolution.
+  private readCallee(node: Node): { name: string; receiver: string | null } | null {
     const fnNode = node.childForFieldName('function')
       ?? node.childForFieldName('name');
     if (!fnNode) return null;
 
-    // For member access (obj.method), take the property after the last dot.
     const text = fnNode.text;
     const lastDot = text.lastIndexOf('.');
-    return lastDot >= 0 ? text.slice(lastDot + 1) : text;
+    if (lastDot < 0) {
+      return { name: text, receiver: null };
+    }
+
+    const name = text.slice(lastDot + 1);
+    // The receiver is the segment immediately before the method name. For
+    // "this.store.get" that is "store"; for "this.foo" it is "this".
+    const beforeDot = text.slice(0, lastDot);
+    const prevDot = beforeDot.lastIndexOf('.');
+    const receiver = prevDot >= 0 ? beforeDot.slice(prevDot + 1) : beforeDot;
+    return { name, receiver: receiver || null };
   }
 }

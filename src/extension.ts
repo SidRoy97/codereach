@@ -27,6 +27,10 @@ import { CodeGraphBuilder }     from './graph/CodeGraphBuilder';
 import { ImpactAnalyzer }       from './graph/ImpactAnalyzer';
 import { GraphPanel }           from './graph/GraphPanel';
 import { ImpactCodeLens }       from './graph/ImpactCodeLens';
+import { SymbolLocator }        from './graph/SymbolLocator';
+import { LiveImpactBar }        from './graph/LiveImpactBar';
+import { FlowTracer }           from './graph/FlowTracer';
+import { SafetyChecker }        from './graph/SafetyChecker';
 
 // Reports
 import { ProblemsReporter }     from './reports/ProblemsReporter';
@@ -86,6 +90,13 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const graphBuilder = new CodeGraphBuilder(parser);
   const graphPanel   = new GraphPanel(context.extensionUri, () => graphBuilder.getGraph());
   const codeLens     = new ImpactCodeLens(() => graphBuilder.getGraph());
+
+  // --- Impact intelligence features (all graph-backed, no AI needed) ---
+  const getRoot       = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const symbolLocator = new SymbolLocator(() => graphBuilder.getGraph());
+  const liveImpactBar = new LiveImpactBar(() => graphBuilder.getGraph(), getRoot);
+  const flowTracer    = new FlowTracer(() => graphBuilder.getGraph());
+  const safetyChecker = new SafetyChecker(() => graphBuilder.getGraph());
 
   // --- Context / AI assist (now graph-backed) ---
   const summarizer   = new FileSummarizer(ai, context);
@@ -351,7 +362,63 @@ function activateInternal(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Write the structured project-understanding document (nested JSON).
+  // --- Impact intelligence commands ---
+
+  // I find the symbol the cursor is in, building the graph first if needed.
+  const symbolUnderCursor = async (): Promise<{ id: string; name: string } | null> => {
+    const editor = vscode.window.activeTextEditor;
+    const root = getRoot();
+    if (!editor || !root) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return null; }
+
+    await ensureGraph();
+    const relFile = path.relative(root, editor.document.uri.fsPath);
+    const node = symbolLocator.findEnclosing(relFile, editor.selection.active.line);
+    if (!node) { vscode.window.showInformationMessage('Codescape: Place the cursor inside a function or method.'); return null; }
+    return { id: node.id, name: node.name };
+  };
+
+  // Feature 1 click target: open the impact graph for the cursor's symbol.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.showImpactForCursor', async () => {
+      const sym = await symbolUnderCursor();
+      if (sym) graphPanel.show(sym.id);
+    }),
+  );
+
+  // Feature 2: trace the flow downward from the cursor's symbol.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.traceFlow', async () => {
+      const sym = await symbolUnderCursor();
+      if (!sym) return;
+
+      const rows = flowTracer.trace(sym.id);
+      listPanel.show({
+        title: `Flow from ${sym.name}`,
+        intro: rows.length <= 1
+          ? `${sym.name} does not call any tracked symbols.`
+          : `${rows.length} step(s) downstream from ${sym.name}, in call order. Click any step to open it.`,
+        rows,
+      });
+    }),
+  );
+
+  // Feature 3: safety check — what breaks if the cursor's symbol changes.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codescape.safetyCheck', async () => {
+      const sym = await symbolUnderCursor();
+      if (!sym) return;
+
+      const rows = safetyChecker.check(sym.id);
+      const crossFile = rows.filter(r => r.badge === 'cross-file').length;
+      listPanel.show({
+        title: `Safety check: ${sym.name}`,
+        intro: rows.length === 0
+          ? `Nothing calls ${sym.name}. Changing it looks safe.`
+          : `${rows.length} call site(s) would be affected (${crossFile} cross-file, higher risk). Review these before changing ${sym.name}.`,
+        rows,
+      });
+    }),
+  );
   context.subscriptions.push(
     vscode.commands.registerCommand('codescape.generateUnderstanding', async () => {
       try {
@@ -385,9 +452,17 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(async editor => {
-      if (!editor) { blastBar.hide(); return; }
+      if (!editor) { blastBar.hide(); liveImpactBar.update(undefined); return; }
       await analyzeDocument(editor.document);
       updateBlastBar(editor.document);
+      liveImpactBar.update(editor);
+    }),
+  );
+
+  // Update the live impact bar as the cursor moves between symbols.
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection(e => {
+      liveImpactBar.update(e.textEditor);
     }),
   );
 
@@ -426,11 +501,12 @@ function activateInternal(context: vscode.ExtensionContext): void {
         codeLens.refresh();
         const active = vscode.window.activeTextEditor;
         if (active) updateBlastBar(active.document);
+        liveImpactBar.update(active);
       })
       .catch(() => {});
   }, 2500);
 
-  context.subscriptions.push(diagPub, statusBar, dashboard, codeActions, orchestrator);
+  context.subscriptions.push(diagPub, statusBar, dashboard, codeActions, orchestrator, liveImpactBar);
 }
 
 export function deactivate(): void {

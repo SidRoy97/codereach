@@ -29,7 +29,9 @@ export class CodeGraphBuilder {
 
     const nodes: CodeNode[] = [];
     // Records "this symbol calls something named X" before we resolve X to an id.
-    const pendingCalls: Array<{ fromId: string; calleeName: string }> = [];
+    // The receiver (what the call was made on) is kept so resolution can tell
+    // this.foo() and store.get() apart from any other foo/get in the project.
+    const pendingCalls: Array<{ fromId: string; calleeName: string; receiver: string | null }> = [];
     // Maps a bare symbol name to the node ids that declare it,
     // used to resolve call names back to real nodes.
     const nameToIds = new Map<string, string[]>();
@@ -62,12 +64,17 @@ export class CodeGraphBuilder {
       for (const call of result.calls) {
         const fromId = this.enclosingSymbolId(result.symbols, call.line, relFile);
         if (fromId) {
-          pendingCalls.push({ fromId, calleeName: call.calleeName });
+          pendingCalls.push({ fromId, calleeName: call.calleeName, receiver: call.receiver });
         }
       }
     }
 
-    const edges = this.resolveEdges(pendingCalls, nameToIds);
+    // Class names in the project, used to match a receiver variable to a type
+    // by convention (e.g. receiver "analyzer" → class "ImpactAnalyzer",
+    // receiver "store" → class "ResultStore"). This is a heuristic, not full
+    // type inference, but it resolves most same-named methods correctly.
+    const classNames = nodes.filter(n => n.kind === 'class').map(n => n.name);
+    const edges = this.resolveEdges(pendingCalls, nameToIds, classNames);
 
     this.graph = { nodes, edges };
     return this.graph;
@@ -121,24 +128,66 @@ export class CodeGraphBuilder {
   }
 
   // Turn recorded calls into edges by matching callee names to node ids.
-  // When a name resolves to several files, prefer a definition in the same
-  // file as the caller — this removes most false edges from common method
-  // names like get, clear, dispose, render, show. Unresolved names (calls to
-  // library code we never parsed) are dropped.
+  // Resolution is receiver-aware: when a call is this.foo() or store.get(),
+  // the receiver narrows which same-named symbol is meant, instead of linking
+  // to every foo/get in the project. Falls back to same-file preference when
+  // the receiver gives no signal. Unresolved names (library calls) are dropped.
   private resolveEdges(
-    pendingCalls: Array<{ fromId: string; calleeName: string }>,
+    pendingCalls: Array<{ fromId: string; calleeName: string; receiver: string | null }>,
     nameToIds: Map<string, string[]>,
+    classNames: string[],
   ): CodeEdge[] {
     const edges: CodeEdge[] = [];
     const seen = new Set<string>();
+
+    // Map a lowercased receiver variable to a class name by naming convention:
+    // "analyzer" → "ImpactAnalyzer", "store" → "ResultStore", "dashboard" →
+    // "DashboardProvider". A class matches if its lowercased name contains the
+    // receiver, or the receiver contains a meaningful chunk of the class name.
+    const classFor = (receiver: string): string | null => {
+      const r = receiver.toLowerCase();
+      // Exact-ish: class name lowercased equals or contains the receiver.
+      let best: string | null = null;
+      for (const cls of classNames) {
+        const c = cls.toLowerCase();
+        if (c === r || c.includes(r) || r.includes(c)) {
+          // Prefer the longest class name match (most specific).
+          if (!best || cls.length > best.length) best = cls;
+        }
+      }
+      return best;
+    };
 
     for (const call of pendingCalls) {
       const targetIds = nameToIds.get(call.calleeName);
       if (!targetIds) continue;
 
       const callerFile = call.fromId.split('::')[0];
-      const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
-      const chosen = sameFile.length > 0 ? sameFile : targetIds;
+      let chosen: string[];
+
+      if (call.receiver === 'this') {
+        // this.method() — the target almost always lives in the same file as
+        // the caller (the same class). Restrict to that, which removes nearly
+        // all cross-class collisions for common names.
+        const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
+        chosen = sameFile.length > 0 ? sameFile : targetIds;
+      } else if (call.receiver && classFor(call.receiver)) {
+        // store.get() — resolve to the matched class's method if one exists.
+        const cls = classFor(call.receiver)!;
+        const inClass = targetIds.filter(id => this.fileDeclaresClass(id, cls, nameToIds));
+        // If we can locate the class's file, prefer targets in that file.
+        const classFiles = new Set(
+          (nameToIds.get(cls) ?? []).map(id => id.split('::')[0]),
+        );
+        const inClassFile = targetIds.filter(id => classFiles.has(id.split('::')[0]));
+        chosen = inClass.length > 0 ? inClass
+               : inClassFile.length > 0 ? inClassFile
+               : targetIds;
+      } else {
+        // No useful receiver — keep the previous same-file preference.
+        const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
+        chosen = sameFile.length > 0 ? sameFile : targetIds;
+      }
 
       for (const toId of chosen) {
         if (toId === call.fromId) continue; // ignore self-calls
@@ -152,6 +201,14 @@ export class CodeGraphBuilder {
     }
 
     return edges;
+  }
+
+  // True when the node id sits in the same file where the given class is
+  // declared — used to keep receiver-resolved calls inside the class's file.
+  private fileDeclaresClass(nodeId: string, className: string, nameToIds: Map<string, string[]>): boolean {
+    const nodeFile = nodeId.split('::')[0];
+    const classIds = nameToIds.get(className) ?? [];
+    return classIds.some(id => id.split('::')[0] === nodeFile);
   }
 
   // Security guard: a resolved path must sit inside the workspace root.

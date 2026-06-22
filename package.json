@@ -1,6 +1,6 @@
 {
   "name": "codescape-vscode",
-  "displayName": "Codescape \u2014 AI Code Quality & Impact Graph",
+  "displayName": "Codescape — AI Code Quality & Impact Graph",
   "description": "Security, code quality, SOLID analysis, AI-powered fixes, and an interactive code impact graph. Works with Ollama, Groq, HuggingFace, and more.",
   "version": "0.1.0",
   "publisher": "SidRoy300497",
@@ -74,6 +74,18 @@
       {
         "command": "codescape.showBlastRadius",
         "title": "Codescape: Show Blast Radius for Current File"
+      },
+      {
+        "command": "codescape.showImpactForCursor",
+        "title": "Codescape: Show Impact for Symbol at Cursor"
+      },
+      {
+        "command": "codescape.traceFlow",
+        "title": "Codescape: Trace Flow from Cursor"
+      },
+      {
+        "command": "codescape.safetyCheck",
+        "title": "Codescape: Safety Check (What Breaks if I Change This)"
       }
     ],
     "configuration": {
@@ -91,11 +103,11 @@
             "openai-compatible"
           ],
           "enumDescriptions": [
-            "Local models via Ollama \u2014 100% free, no account, no key",
-            "Groq cloud \u2014 free account, no credit card, very fast",
-            "Hugging Face Inference API \u2014 free account, huge model selection",
-            "OpenRouter \u2014 free tier models available",
-            "Anthropic Claude \u2014 paid API key required",
+            "Local models via Ollama — 100% free, no account, no key",
+            "Groq cloud — free account, no credit card, very fast",
+            "Hugging Face Inference API — free account, huge model selection",
+            "OpenRouter — free tier models available",
+            "Anthropic Claude — paid API key required",
             "Any OpenAI-compatible server (LM Studio, vLLM, llama.cpp)"
           ],
           "markdownDescription": "Which AI backend to use.\n\n**Free options:** `ollama` (no account), `groq` (free account), `huggingface` (free account)",
@@ -135,7 +147,7 @@
         "codescape.complexityThreshold": {
           "type": "number",
           "default": 10,
-          "description": "Cyclomatic complexity threshold \u2014 functions above this are flagged."
+          "description": "Cyclomatic complexity threshold — functions above this are flagged."
         },
         "codescape.duplicateLineThreshold": {
           "type": "number",
@@ -181,12 +193,20 @@
           "group": "codescape@1"
         },
         {
-          "command": "codescape.copyAiContext",
+          "command": "codescape.showImpactForCursor",
           "group": "codescape@2"
         },
         {
-          "command": "codescape.showBlastRadius",
+          "command": "codescape.safetyCheck",
           "group": "codescape@3"
+        },
+        {
+          "command": "codescape.traceFlow",
+          "group": "codescape@4"
+        },
+        {
+          "command": "codescape.showBlastRadius",
+          "group": "codescape@5"
         }
       ]
     }
@@ -202,6 +222,7 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
+    "cytoscape": "^3.30.2",
     "web-tree-sitter": "0.25.10"
   }
 }
