@@ -2,7 +2,7 @@
   "name": "codescape-vscode",
   "displayName": "Codescape — AI Code Quality & Impact Graph",
   "description": "Security, code quality, SOLID analysis, AI-powered fixes, and an interactive code impact graph. Works with Ollama, Groq, HuggingFace, and more.",
-  "version": "0.1.0",
+  "version": "0.1.11",
   "publisher": "SidRoy300497",
   "license": "MIT",
   "repository": {
@@ -138,6 +138,11 @@
           "type": "boolean",
           "default": false,
           "description": "Run AI deep analysis automatically when files are analyzed. Off by default because it runs a local/remote model and can be CPU/GPU heavy. AI features (Understanding Doc) still work on demand when this is off."
+        },
+        "codescape.preciseRelationships": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use the language server's call hierarchy for **ground-truth** caller/callee relationships in the Understanding Doc, instead of the fast built-in heuristic.\n\nMore accurate, but slower (it queries the language server per symbol) and depends on the relevant language extension being installed and indexed (TypeScript works out of the box; Python needs Pylance; Java needs the Java extension). When the language server can't resolve a symbol, Codescape falls back to the heuristic for that symbol.\n\nOnly affects the Understanding Doc — live features always use the fast heuristic."
         },
         "codescape.enableStaticAnalysis": {
           "type": "boolean",

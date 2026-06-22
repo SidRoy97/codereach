@@ -53,7 +53,7 @@ export class CodeGraphBuilder {
       // Turn each declared symbol into a node.
       for (const symbol of result.symbols) {
         const id = `${relFile}::${symbol.name}`;
-        nodes.push({ id, name: symbol.name, kind: symbol.kind, file: relFile, line: symbol.line });
+        nodes.push({ id, name: symbol.name, kind: symbol.kind, file: relFile, line: symbol.line, nameColumn: symbol.nameColumn });
 
         const existing = nameToIds.get(symbol.name) ?? [];
         existing.push(id);
@@ -141,14 +141,27 @@ export class CodeGraphBuilder {
     const seen = new Set<string>();
 
     // Receivers that are language/runtime built-ins or config objects, never
-    // project classes. A call like JSON.parse() or cfg.get() has one of these
-    // as its receiver, so I drop it instead of linking it to a project symbol
-    // of the same name (e.g. our own ResultStore.get or LanguageParser.parse).
+    // project classes. A call like JSON.parse(), cfg.get(), os.path() or
+    // System.out() has one of these as its receiver, so I drop it instead of
+    // linking it to a project symbol of the same name. I include the common
+    // built-ins for all supported languages (JS/TS, Python, Java).
     const BUILTIN_RECEIVERS = new Set([
+      // JavaScript / TypeScript
       'json', 'object', 'array', 'math', 'console', 'promise', 'date',
       'number', 'string', 'boolean', 'map', 'set', 'symbol', 'reflect',
       'window', 'document', 'process', 'cfg', 'config',
+      // Python
+      'os', 'sys', 're', 'io', 'json', 'logging', 'collections', 'itertools',
+      'functools', 'typing', 'super',
+      // Java
+      'system', 'collections', 'objects', 'arrays', 'optional', 'stream',
+      'list', 'integer', 'long', 'double', 'character',
     ]);
+
+    // Self-reference receivers across languages: JS/TS use "this", Python uses
+    // "self" (instance) and "cls" (classmethod). All mean "a method on the
+    // current class", so I resolve them within the caller's own file.
+    const SELF_RECEIVERS = new Set(['this', 'self', 'cls']);
 
     // Map a lowercased receiver variable to a class name by naming convention:
     // "analyzer" → "ImpactAnalyzer", "store" → "ResultStore", "dashboard" →
@@ -169,6 +182,11 @@ export class CodeGraphBuilder {
     };
 
     for (const call of pendingCalls) {
+      // Skip calls whose receiver is computed (a call/index result like
+      // cfg().get()) — the receiver type is unknown, so name-matching would
+      // create false edges. The parser marks these "<computed>".
+      if (call.receiver === '<computed>') continue;
+
       // Skip calls on known built-in/runtime receivers — these are library
       // calls (JSON.parse, Map.get, cfg.get), not calls into project symbols.
       if (call.receiver && BUILTIN_RECEIVERS.has(call.receiver.toLowerCase())) continue;
@@ -179,10 +197,11 @@ export class CodeGraphBuilder {
       const callerFile = call.fromId.split('::')[0];
       let chosen: string[];
 
-      if (call.receiver === 'this') {
-        // this.method() — the target almost always lives in the same file as
-        // the caller (the same class). Restrict to that, which removes nearly
-        // all cross-class collisions for common names.
+      if (call.receiver && SELF_RECEIVERS.has(call.receiver)) {
+        // this.method() / self.method() / cls.method() — the target almost
+        // always lives in the same file as the caller (the same class). I
+        // restrict to that, which removes nearly all cross-class collisions
+        // for common names across JS/TS and Python.
         const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
         chosen = sameFile.length > 0 ? sameFile : targetIds;
       } else if (call.receiver && classFor(call.receiver)) {

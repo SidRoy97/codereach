@@ -127,6 +127,16 @@ class DashboardProvider {
             vscode.commands.executeCommand('workbench.action.openSettings', 'codescape');
             return;
         }
+        // Flip the precise-relationships setting and re-render so the toggle
+        // reflects the new state. The setting is the single source of truth — the
+        // Understanding Doc reads the same value when it runs.
+        if (msg.type === 'togglePrecise') {
+            const cfg = vscode.workspace.getConfiguration('codescape');
+            const current = cfg.get('preciseRelationships', false);
+            cfg.update('preciseRelationships', !current, vscode.ConfigurationTarget.Global)
+                .then(() => this.refresh());
+            return;
+        }
         if (msg.type === 'goToFile' && typeof msg.uri === 'string' && typeof msg.line === 'number') {
             try {
                 const uri = vscode.Uri.parse(msg.uri);
@@ -151,6 +161,11 @@ class DashboardProvider {
     buildHtml() {
         const results = this.scopedResults();
         const summary = this.computeSummary(results);
+        // Whether precise (language-server) relationships are enabled, so the
+        // toggle in the Understand Code group reflects the current setting.
+        const preciseOn = vscode.workspace
+            .getConfiguration('codescape')
+            .get('preciseRelationships', false);
         // A short label describing what the user is looking at.
         const scopeLabel = this.scope.kind === 'file'
             ? `This file: ${path.basename(vscode.Uri.parse(this.scope.uri).fsPath)}`
@@ -211,6 +226,12 @@ class DashboardProvider {
   .btn:hover { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent); font-weight: 700; }
+  .btn.toggle { width: 100%; justify-content: center; margin-top: 5px; }
+  .note { font-size: 9.5px; line-height: 1.5; opacity: 0.7; margin-top: 6px; padding: 6px 8px;
+    border-left: 2px solid var(--border); background: rgba(128,128,128,0.06); border-radius: 0 4px 4px 0; }
+  .note b { opacity: 0.95; }
+  .note code { font-family: monospace; font-size: 9px; background: rgba(128,128,128,0.18);
+    padding: 0 3px; border-radius: 3px; }
   .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   .btn .ic { font-size: 12px; }
 
@@ -283,15 +304,17 @@ class DashboardProvider {
 <div class="group">
   <div class="group-title">Understand Code</div>
   <div class="btn-row">
+    <button class="btn" data-cmd="codescape.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
     <button class="btn" data-cmd="codescape.showBlastRadius"><span class="ic">💥</span>Blast Radius</button>
     <button class="btn" data-cmd="codescape.findUnused"><span class="ic">🔍</span>Unused</button>
   </div>
-</div>
-
-<div class="group">
-  <div class="group-title">For AI / LLMs</div>
-  <div class="btn-row">
-    <button class="btn" data-cmd="codescape.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
+  <button class="btn toggle ${preciseOn ? 'active' : ''}" data-precise="1" title="When on, the Understanding Doc resolves relationships from the language server (ground truth) instead of the fast heuristic. Slower; needs the language extension installed.">
+    <span class="ic">${preciseOn ? '🎯' : '⚡'}</span>Precise relationships: ${preciseOn ? 'On' : 'Off'}
+  </button>
+  <div class="note">
+    ${preciseOn
+            ? '🎯 <b>On:</b> the Understanding Doc asks the language server for exact callers/callees (ground truth). More accurate, but slower and it needs the language\'s extension installed and indexed: <b>TypeScript/JavaScript</b> work out of the box; <b>Python</b> needs the <code>ms-python.python</code> extension (Pylance); <b>Java</b> needs <code>redhat.java</code> (Language Support for Java™ by Red Hat, or the Extension Pack for Java). Each language is resolved separately, so calls <i>between</i> languages aren\'t tracked, and trivial delegating methods (e.g. <code>dispose</code>) may merge. Symbols it can\'t resolve fall back to the fast estimate. Only affects the Understanding Doc.'
+            : '⚡ <b>Off:</b> the Understanding Doc uses a fast built-in estimate of callers/callees. Instant and works offline, but a few relationships for shared names (like several <code>dispose</code> methods) may be approximate. Turn on for exact results.'}
   </div>
 </div>
 
@@ -308,7 +331,7 @@ class DashboardProvider {
 <div class="scope-pill">👁 ${this.esc(scopeLabel)}</div>
 
 <div class="summary-grid">
-  <div class="stat"><div class="stat-num red">${summary.bySeverity.error ?? 0}</div><div class="stat-label">Errors</div></div>
+  <div class="stat"><div class="stat-num red">${summary.bySeverity.error ?? 0}</div><div class="stat-label">Severe</div></div>
   <div class="stat"><div class="stat-num yellow">${summary.bySeverity.warning ?? 0}</div><div class="stat-label">Warnings</div></div>
   <div class="stat"><div class="stat-num blue">${summary.totalIssues}</div><div class="stat-label">Total</div></div>
   <div class="stat"><div class="stat-num ${summary.avgComplexity > 10 ? 'yellow' : 'green'}">${summary.avgComplexity}</div><div class="stat-label">Avg Cx</div></div>
@@ -334,6 +357,10 @@ ${fileCards}
     btn.addEventListener('click', () => {
       if (btn.dataset.settings) {
         vscode.postMessage({ type: 'openSettings' });
+        return;
+      }
+      if (btn.dataset.precise) {
+        vscode.postMessage({ type: 'togglePrecise' });
         return;
       }
       const id = btn.dataset.cmd;

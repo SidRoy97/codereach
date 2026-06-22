@@ -3,16 +3,25 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { CodeGraph, CodeNode } from '../graph/CodeGraphTypes';
 import { ImpactAnalyzer } from '../graph/ImpactAnalyzer';
+import { PreciseRelationships } from '../graph/PreciseRelationships';
 import { FileSummarizer } from '../context/FileSummarizer';
 import { AiScanner } from '../scanners/AiScanner';
 
 // One method inside a class, with its relationships from the graph.
+// A related symbol: its name plus the file it is defined in. Qualifying by
+// file removes the ambiguity of bare names (e.g. which "get" or "dispose"),
+// which makes the relationships precise for both humans and LLMs.
+interface Relation {
+  name: string;
+  file: string;
+}
+
 interface MethodEntry {
   name: string;
   summary: string;
   line: number;        // 1-based
-  callers: string[];   // names of symbols that call this
-  callees: string[];   // names of symbols this calls
+  callers: Relation[]; // symbols that call this, qualified by file
+  callees: Relation[]; // symbols this calls, qualified by file
 }
 
 // One top-level symbol in a file (function or class). Classes carry methods.
@@ -21,8 +30,8 @@ interface SymbolEntry {
   kind: 'function' | 'class' | 'method';
   summary: string;
   line: number;        // 1-based
-  callers: string[];
-  callees: string[];
+  callers: Relation[];
+  callees: Relation[];
   methods?: MethodEntry[];
 }
 
@@ -98,25 +107,20 @@ export class UnderstandingGenerator {
 
     const analyzer = new ImpactAnalyzer(graph);
 
+    // Opt-in precise mode: when enabled, resolve relationships from the
+    // language server (ground truth) instead of the name-based heuristic. It is
+    // slower and depends on the relevant language extension being installed, so
+    // it is off by default and only ever used for this document.
+    const usePrecise = vscode.workspace
+      .getConfiguration('codescape')
+      .get<boolean>('preciseRelationships', false);
+    const precise = usePrecise ? new PreciseRelationships(root) : null;
+
     // Use file summaries only if they already exist in the cache. I do not
     // generate them here: the per-symbol pass below already summarizes every
     // symbol, and adding a second full AI pass for file-level summaries would
     // roughly double the compute (and the fan noise) for little extra value.
     const fileSummaries = this.summarizer.getSummaries();
-
-    // Probe the AI once up front. If it returns nothing, the provider is not
-    // reachable (e.g. Ollama not running) and every summary would silently be
-    // a structural fallback — so warn and let the user fix it first.
-    const aiReady = await this.probeAi();
-    if (!aiReady) {
-      const choice = await vscode.window.showWarningMessage(
-        'Codescape: No AI response. The document will contain structure only, not AI summaries. ' +
-        'For Ollama: install it, run "ollama pull llama3.2", and make sure "ollama serve" is running. ' +
-        'You can also pick a different provider in Settings.',
-        'Continue anyway', 'Cancel',
-      );
-      if (choice !== 'Continue anyway') return;
-    }
 
     // Group nodes by file so each file becomes one AI call.
     const byFile = this.groupByFile(graph.nodes);
@@ -128,9 +132,18 @@ export class UnderstandingGenerator {
       files: {},
     };
 
+    let aiReady = true;
+
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Codescape: Building understanding…', cancellable: true },
       async (progress, token) => {
+        // Probe the AI first, inside the progress so the notification shows
+        // immediately (a cold model load can take several seconds, and we don't
+        // want the user staring at nothing while the fan spins).
+        progress.report({ message: 'checking AI provider…' });
+        aiReady = await this.probeAi();
+        if (!aiReady) return;
+
         const files = Array.from(byFile.keys());
 
         for (let i = 0; i < files.length; i++) {
@@ -138,15 +151,48 @@ export class UnderstandingGenerator {
           const file = files[i];
           const nodes = byFile.get(file)!;
 
-          const aiSummaries = await this.summarizeFileSymbols(root, file, nodes);
-          doc.files[file] = this.buildFileEntry(file, nodes, graph, analyzer, fileSummaries, aiSummaries);
+          // Report before the call so the counter advances as each file starts.
+          const detail = precise ? ' (precise)' : '';
+          progress.report({ message: `summarizing file ${i + 1} of ${files.length}${detail}…`, increment: (1 / files.length) * 100 });
 
-          progress.report({ message: `${i + 1}/${files.length}`, increment: (1 / files.length) * 100 });
+          const aiSummaries = await this.summarizeFileSymbols(root, file, nodes);
+          doc.files[file] = await this.buildFileEntry(file, nodes, graph, analyzer, fileSummaries, aiSummaries, precise);
         }
+
+        // Second pass: only retry the symbols the first pass could not
+        // summarize (they still carry a structural fallback). The model
+        // sometimes omits a few keys from its JSON; a focused retry usually
+        // fills them in. This re-calls only the affected files — typically a
+        // handful of symbols — so it adds very little extra load.
+        if (token.isCancellationRequested) return;
+        progress.report({ message: 'filling in any gaps…' });
+        await this.retryFallbacks(root, byFile, doc, token, progress);
+
+        // Final AI call: the project-wide paragraph. I keep it inside the
+        // progress notification so the user always sees that work is happening
+        // while the model runs — otherwise the fan spins with nothing on screen.
+        if (token.isCancellationRequested) return;
+        progress.report({ message: 'summarizing the whole project…' });
+        doc.globalContext = await this.buildGlobalContext(doc);
       },
     );
 
-    doc.globalContext = await this.buildGlobalContext(doc);
+    // If the probe failed, ask the user whether to continue with a
+    // structure-only document (outside progress so the dialog is clear).
+    if (!aiReady) {
+      const choice = await vscode.window.showWarningMessage(
+        'Codescape: No AI response. The document will contain structure only, not AI summaries. ' +
+        'For Ollama: install it, run "ollama pull llama3.2", and make sure "ollama serve" is running. ' +
+        'You can also pick a different provider in Settings.',
+        'Build structure-only', 'Cancel',
+      );
+      if (choice !== 'Build structure-only') return;
+
+      // Build the document from structure alone — no AI calls.
+      for (const [file, nodes] of byFile) {
+        doc.files[file] = await this.buildFileEntry(file, nodes, graph, analyzer, fileSummaries, {}, precise);
+      }
+    }
 
     const outUri = vscode.Uri.file(path.join(root, 'codescape-understanding.json'));
     await vscode.workspace.fs.writeFile(outUri, Buffer.from(JSON.stringify(doc, null, 2), 'utf8'));
@@ -210,16 +256,70 @@ export class UnderstandingGenerator {
     }
   }
 
+  // Find symbols still carrying a fallback summary, retry just those (grouped
+  // by file, only the missing names sent), and patch any real summaries back
+  // into the doc. Mutates doc in place.
+  private async retryFallbacks(
+    root: string,
+    byFile: Map<string, CodeNode[]>,
+    doc: UnderstandingDoc,
+    token: vscode.CancellationToken,
+    progress: vscode.Progress<{ message?: string; increment?: number }>,
+  ): Promise<void> {
+    // Collect the files that still have at least one unsummarized symbol, and
+    // the set of names to retry within each.
+    const filesToRetry: Array<{ file: string; names: Set<string> }> = [];
+    for (const [file, entry] of Object.entries(doc.files)) {
+      const missing = new Set<string>();
+      for (const sym of entry.symbols) {
+        if (this.isFallback(sym.summary)) missing.add(sym.name);
+        for (const m of sym.methods ?? []) {
+          if (this.isFallback(m.summary)) missing.add(m.name);
+        }
+      }
+      if (missing.size > 0) filesToRetry.push({ file, names: missing });
+    }
+
+    if (filesToRetry.length === 0) return;
+
+    for (let i = 0; i < filesToRetry.length; i++) {
+      if (token.isCancellationRequested) return;
+      const { file, names } = filesToRetry[i];
+      const allNodes = byFile.get(file);
+      if (!allNodes) continue;
+
+      // Send only the still-missing symbols so the retry call is small.
+      const missingNodes = allNodes.filter(n => names.has(n.name));
+      const retry = await this.summarizeFileSymbols(root, file, missingNodes);
+
+      // Patch only where the retry produced a real (non-empty) summary.
+      const entry = doc.files[file];
+      for (const sym of entry.symbols) {
+        if (this.isFallback(sym.summary) && retry[sym.name]?.trim()) {
+          sym.summary = retry[sym.name];
+        }
+        for (const m of sym.methods ?? []) {
+          if (this.isFallback(m.summary) && retry[m.name]?.trim()) {
+            m.summary = retry[m.name];
+          }
+        }
+      }
+
+      progress.report({ message: `retry ${i + 1}/${filesToRetry.length}` });
+    }
+  }
+
   // Assemble one file's entry: top-level functions and classes, with methods
   // nested under their class by file + line proximity.
-  private buildFileEntry(
+  private async buildFileEntry(
     file: string,
     nodes: CodeNode[],
     graph: CodeGraph,
     analyzer: ImpactAnalyzer,
     fileSummaries: Map<string, string>,
     aiSummaries: AiSummaryMap,
-  ): FileEntry {
+    precise: PreciseRelationships | null,
+  ): Promise<FileEntry> {
     const classes = nodes.filter(n => n.kind === 'class').sort((a, b) => a.line - b.line);
     const functions = nodes.filter(n => n.kind === 'function');
     const methods = nodes.filter(n => n.kind === 'method');
@@ -228,7 +328,7 @@ export class UnderstandingGenerator {
 
     // Functions are standalone top-level symbols.
     for (const fn of functions) {
-      symbols.push(this.toSymbolEntry(fn, graph, analyzer, aiSummaries));
+      symbols.push(await this.toSymbolEntry(fn, graph, analyzer, aiSummaries, precise));
     }
 
     // Classes own the methods that fall between this class and the next.
@@ -237,19 +337,20 @@ export class UnderstandingGenerator {
       const nextLine = i + 1 < classes.length ? classes[i + 1].line : Number.MAX_SAFE_INTEGER;
       const owned = methods.filter(m => m.line >= cls.line && m.line < nextLine);
 
-      const entry = this.toSymbolEntry(cls, graph, analyzer, aiSummaries);
-      entry.methods = owned
-        .sort((a, b) => a.line - b.line)
-        .map(m => {
-          const rel = this.relationships(m, graph, analyzer);
-          return {
-            name: m.name,
-            summary: aiSummaries[m.name] ?? this.fallbackSummary(m),
-            line: m.line + 1,
-            callers: rel.callers,
-            callees: rel.callees,
-          };
+      const entry = await this.toSymbolEntry(cls, graph, analyzer, aiSummaries, precise);
+      const ownedSorted = owned.sort((a, b) => a.line - b.line);
+      const methodEntries: MethodEntry[] = [];
+      for (const m of ownedSorted) {
+        const rel = await this.relationships(m, graph, analyzer, precise);
+        methodEntries.push({
+          name: m.name,
+          summary: aiSummaries[m.name] ?? this.fallbackSummary(m),
+          line: m.line + 1,
+          callers: rel.callers,
+          callees: rel.callees,
         });
+      }
+      entry.methods = methodEntries;
       symbols.push(entry);
     }
 
@@ -260,8 +361,8 @@ export class UnderstandingGenerator {
   }
 
   // Turn a node into a symbol entry with its relationships and summary.
-  private toSymbolEntry(node: CodeNode, graph: CodeGraph, analyzer: ImpactAnalyzer, ai: AiSummaryMap): SymbolEntry {
-    const rel = this.relationships(node, graph, analyzer);
+  private async toSymbolEntry(node: CodeNode, graph: CodeGraph, analyzer: ImpactAnalyzer, ai: AiSummaryMap, precise: PreciseRelationships | null): Promise<SymbolEntry> {
+    const rel = await this.relationships(node, graph, analyzer, precise);
     return {
       name: node.name,
       kind: node.kind,
@@ -272,31 +373,76 @@ export class UnderstandingGenerator {
     };
   }
 
-  // Caller and callee names for a node, read straight from the graph edges.
-  // I filter out built-in/global method names (Map.get, JSON.parse, etc.) so
-  // the relationships only list real symbols defined in this project.
-  private relationships(node: CodeNode, graph: CodeGraph, analyzer: ImpactAnalyzer): { callers: string[]; callees: string[] } {
-    const clean = (names: string[]) => names.filter(n => !BUILTIN_NAMES.has(n));
+  // Caller and callee names for a node. When a precise resolver is supplied,
+  // I ask the language server for ground-truth relationships and use them if it
+  // can answer; otherwise (and when precise mode is off) I fall back to the
+  // graph-based heuristic. I filter out built-in/global method names so the
+  // relationships only list real symbols defined in this project.
+  private async relationships(
+    node: CodeNode,
+    graph: CodeGraph,
+    analyzer: ImpactAnalyzer,
+    precise: PreciseRelationships | null,
+  ): Promise<{ callers: Relation[]; callees: Relation[] }> {
+    // Precise first: replace the heuristic entirely for this symbol when the
+    // language server can resolve it. I still drop built-in names so the two
+    // paths produce comparable, project-only lists.
+    if (precise) {
+      const result = await precise.forNode(node);
+      if (result) {
+        const filterBuiltins = (rels: Relation[]) => rels.filter(r => !BUILTIN_NAMES.has(r.name));
+        return {
+          callers: filterBuiltins(result.callers),
+          callees: filterBuiltins(result.callees),
+        };
+      }
+      // Fall through to the heuristic for this one symbol if the server could
+      // not answer (extension missing, not indexed yet, or unresolvable).
+    }
+
+    // Drop built-in names, then collapse duplicates by name+file: several
+    // different methods can share a name (e.g. five "dispose" methods in
+    // different files); qualifying by file keeps the distinct ones and removes
+    // exact repeats.
+    const clean = (nodes: CodeNode[]): Relation[] => {
+      const seen = new Set<string>();
+      const out: Relation[] = [];
+      for (const n of nodes) {
+        if (BUILTIN_NAMES.has(n.name)) continue;
+        const key = `${n.file}:${n.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ name: n.name, file: n.file });
+      }
+      return out;
+    };
 
     const result = analyzer.analyze(node.id);
     if (result) {
       return {
-        callers: clean(result.directCallers.map(n => n.name)),
-        callees: clean(result.directCallees.map(n => n.name)),
+        callers: clean(result.directCallers),
+        callees: clean(result.directCallees),
       };
     }
     // Fallback to raw edge scan if analyze returns null.
-    const callers = graph.edges.filter(e => e.to === node.id)
-      .map(e => graph.nodes.find(n => n.id === e.from)?.name).filter((n): n is string => !!n);
-    const callees = graph.edges.filter(e => e.from === node.id)
-      .map(e => graph.nodes.find(n => n.id === e.to)?.name).filter((n): n is string => !!n);
-    return { callers: clean(callers), callees: clean(callees) };
+    const callerNodes = graph.edges.filter(e => e.to === node.id)
+      .map(e => graph.nodes.find(n => n.id === e.from)).filter((n): n is CodeNode => !!n);
+    const calleeNodes = graph.edges.filter(e => e.from === node.id)
+      .map(e => graph.nodes.find(n => n.id === e.to)).filter((n): n is CodeNode => !!n);
+    return { callers: clean(callerNodes), callees: clean(calleeNodes) };
   }
 
   // A plain description used when the AI gives nothing, so the document is
   // always populated and useful even offline.
   private fallbackSummary(node: CodeNode): string {
     return `${node.kind} "${node.name}" defined in ${node.file} at line ${node.line + 1}.`;
+  }
+
+  // True when a summary is one of our structural fallbacks rather than a real
+  // AI summary. I use this to find the few symbols a first pass missed so a
+  // second pass can retry only those, not the whole project.
+  private isFallback(summary: string): boolean {
+    return / defined in .+ at line \d+\.$/.test(summary);
   }
 
   // One paragraph describing the whole project. Falls back to a file count

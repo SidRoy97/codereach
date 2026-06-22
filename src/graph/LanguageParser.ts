@@ -7,6 +7,9 @@ export interface ParsedSymbol {
   name: string;
   kind: 'function' | 'class' | 'method';
   line: number;
+  // Character offset of the symbol's name on its line. The call-hierarchy
+  // provider needs the cursor on the name itself, not just the line start.
+  nameColumn: number;
 }
 
 // A call expression found by parsing — "this code calls something named X".
@@ -142,9 +145,16 @@ export class LanguageParser {
     this.walk(tree.rootNode, node => {
       const kind = declTypes[node.type];
       if (kind) {
-        const name = this.readName(node);
-        if (name) {
-          symbols.push({ name, kind, line: node.startPosition.row });
+        const nameNode = node.childForFieldName('name');
+        if (nameNode && nameNode.text) {
+          symbols.push({
+            name: nameNode.text,
+            kind,
+            line: node.startPosition.row,
+            // The name's column, so the call-hierarchy provider can place the
+            // cursor exactly on the symbol name rather than the line start.
+            nameColumn: nameNode.startPosition.column,
+          });
         }
       }
 
@@ -168,19 +178,28 @@ export class LanguageParser {
     }
   }
 
-  // Read the declared name of a function/class/method node.
-  // Tree-sitter exposes it as a child field called "name".
-  private readName(node: Node): string | null {
-    const nameNode = node.childForFieldName('name');
-    return nameNode ? nameNode.text : null;
-  }
-
   // Read the name being called and its receiver from a call expression.
   // Handles plain calls (foo() → name "foo", receiver null) and member calls
   // (obj.foo() → name "foo", receiver "obj"; this.foo() → receiver "this").
   // For chained access (a.b.foo()) the receiver is the segment just before the
   // method ("b"), which is the most useful part for resolution.
   private readCallee(node: Node): { name: string; receiver: string | null } | null {
+    // Java's method_invocation exposes the receiver and method as separate
+    // fields ("object" and "name") rather than a single dotted "function"
+    // node, so I handle it explicitly to capture the receiver.
+    const nameField = node.childForFieldName('name');
+    const objectField = node.childForFieldName('object');
+    if (objectField && nameField) {
+      const name = nameField.text;
+      const recvText = objectField.text;
+      // A computed receiver (call/index result) cannot be typed by name.
+      if (/[()\[\]]/.test(recvText)) return { name, receiver: '<computed>' };
+      // For a dotted receiver like "this.store", keep the last segment.
+      const lastDot = recvText.lastIndexOf('.');
+      const receiver = lastDot >= 0 ? recvText.slice(lastDot + 1) : recvText;
+      return { name, receiver: receiver || null };
+    }
+
     const fnNode = node.childForFieldName('function')
       ?? node.childForFieldName('name');
     if (!fnNode) return null;
@@ -192,11 +211,21 @@ export class LanguageParser {
     }
 
     const name = text.slice(lastDot + 1);
+
     // The receiver is the segment immediately before the method name. For
     // "this.store.get" that is "store"; for "this.foo" it is "this".
     const beforeDot = text.slice(0, lastDot);
     const prevDot = beforeDot.lastIndexOf('.');
     const receiver = prevDot >= 0 ? beforeDot.slice(prevDot + 1) : beforeDot;
+
+    // If the receiver is a call or index result (e.g. "cfg()" in
+    // this.cfg().get(), or "arr[0]" ), its type cannot be known from the name
+    // alone, so name-matching would create false edges. I mark it computed so
+    // the graph builder drops the call rather than guessing.
+    if (/[()\[\]]/.test(receiver)) {
+      return { name, receiver: '<computed>' };
+    }
+
     return { name, receiver: receiver || null };
   }
 }

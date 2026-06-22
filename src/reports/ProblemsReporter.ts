@@ -22,6 +22,15 @@ interface ReportedFile {
   issues: ReportedIssue[];
 }
 
+// Map a raw severity value to the label shown to people. I keep the stored
+// value as-is (the 'error' enum is used everywhere for filtering and the VS
+// Code mapping) and only change the word that appears in the report, so
+// "error" reads as "Severe" without touching any logic.
+function severityLabel(severity: string): string {
+  if (severity === 'error') return 'Severe';
+  return severity;
+}
+
 // Single job: turn the analysis results into shareable report files
 // (one markdown for humans, one JSON for tools and LLMs). It reads from
 // ResultStore and uses the code graph only to name the enclosing function.
@@ -133,7 +142,7 @@ export class ProblemsReporter {
 
     lines.push(`Total issues: ${total} across ${files.length} file(s)`);
     lines.push('');
-    lines.push('Severity: ' + Object.entries(sev).map(([k, v]) => `${k} ${v}`).join(' · '));
+    lines.push('Severity: ' + Object.entries(sev).map(([k, v]) => `${severityLabel(k)} ${v}`).join(' · '));
     lines.push('Category: ' + Object.entries(cat).map(([k, v]) => `${k} ${v}`).join(' · '));
     lines.push('');
 
@@ -153,7 +162,7 @@ export class ProblemsReporter {
         lines.push(`### ${fn}`);
         lines.push('');
         for (const i of issues) {
-          lines.push(`- **L${i.line}** [${i.severity}/${i.category}] ${i.message}`);
+          lines.push(`- **L${i.line}** [${severityLabel(i.severity)}/${i.category}] ${i.message}`);
           if (i.suggestion) lines.push(`  - Fix: ${i.suggestion}`);
         }
         lines.push('');

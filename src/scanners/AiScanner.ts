@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Issue } from '../types';
 import { IScanner, IConfigProvider } from '../interfaces';
+import { AiCallLog } from './AiCallLog';
 
 // Best default model per provider — chosen for code quality and free availability
 const DEFAULT_MODELS: Record<string, string> = {
@@ -71,6 +72,8 @@ export class AiScanner implements IScanner {
 
     const userMsg = `Language: ${document.languageId}\n\`\`\`\n${document.getText()}\n\`\`\``;
 
+    // Diagnostic: record that an analysis inference is starting, and who asked.
+    const done = AiCallLog.start(`scan ${document.fileName}`);
     try {
       let text: string;
 
@@ -80,8 +83,10 @@ export class AiScanner implements IScanner {
       else if (provider === 'anthropic')   text = await this.callAnthropic(baseUrl, apiKey, model, userMsg);
       else                                 text = await this.callOpenAiFormat(baseUrl, apiKey, model, userMsg, provider);
 
+      done();
       return this.parseResponse(text);
     } catch (err) {
+      AiCallLog.error('scan', err);
       this.handleError(err, provider);
       return [];
     }
@@ -94,12 +99,21 @@ export class AiScanner implements IScanner {
     const baseUrl  = (this.config.getAiBaseUrl() || DEFAULT_URLS[provider]).replace(/\/$/, '');
     const apiKey   = this.config.getAiApiKey();
 
+    // Diagnostic: record that a text-generation inference is starting, and who
+    // asked. The caller frame tells us if it was summaries, retry, global
+    // context, fix, or explain — so a surprise spike can be traced to source.
+    const done = AiCallLog.start('generateText');
     try {
-      if (provider === 'ollama')       return await this.callOllama(baseUrl, model, user, system);
-      if (provider === 'huggingface')  return await this.callHuggingFace(baseUrl, apiKey, model, user, system);
-      if (provider === 'anthropic')    return await this.callAnthropic(baseUrl, apiKey, model, user, system);
-      return await this.callOpenAiFormat(baseUrl, apiKey, model, user, provider, system);
+      let reply: string;
+      if (provider === 'ollama')           reply = await this.callOllama(baseUrl, model, user, system);
+      else if (provider === 'huggingface') reply = await this.callHuggingFace(baseUrl, apiKey, model, user, system);
+      else if (provider === 'anthropic')   reply = await this.callAnthropic(baseUrl, apiKey, model, user, system);
+      else                                 reply = await this.callOpenAiFormat(baseUrl, apiKey, model, user, provider, system);
+
+      done();
+      return reply;
     } catch (err) {
+      AiCallLog.error('generateText', err);
       this.handleError(err, provider);
       return '';
     }

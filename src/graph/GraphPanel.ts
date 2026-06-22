@@ -178,6 +178,13 @@ export class GraphPanel {
   let cy = null;
   let pendingImpact = null;
 
+  // Tap tracking for manual double-click detection. These live at script scope
+  // (not inside renderImpact) so they survive the graph rebuild that a single
+  // tap triggers — otherwise a rebuild would wipe the memory of the first tap
+  // and a double-click could never be detected.
+  let pendingTapId = null;
+  let pendingTapTimer = null;
+
   // All rendering goes through the Cytoscape API. We never set innerHTML
   // with code data, so a malicious symbol name cannot inject markup.
   window.addEventListener('message', event => {
@@ -289,27 +296,31 @@ export class GraphPanel {
       ],
     });
 
-    // Cytoscape has no real double-click event, so I detect it myself: two
-    // taps on the same node within 300ms open the file; a single tap recenters.
-    let lastTapId = null;
-    let lastTapTime = 0;
-
+    // Cytoscape has no real double-click event, so I detect it myself. A
+    // single tap waits briefly before re-centering; if a second tap on the
+    // same node arrives within that window, I cancel the re-center and open
+    // the file instead. The state lives at script scope so the graph rebuild
+    // from a re-center does not wipe it mid-gesture.
     cy.on('tap', 'node', evt => {
       const id = evt.target.id();
-      const now = Date.now();
 
-      if (id === lastTapId && now - lastTapTime < 300) {
-        // Second quick tap on the same node — open its file.
+      // Second tap on the same node before the timer fired — open the file.
+      if (pendingTapId === id && pendingTapTimer !== null) {
+        clearTimeout(pendingTapTimer);
+        pendingTapTimer = null;
+        pendingTapId = null;
         vscode.postMessage({ type: 'open', nodeId: id });
-        lastTapId = null;
-        lastTapTime = 0;
         return;
       }
 
-      // First tap — re-center, and remember it so a quick second tap counts.
-      lastTapId = id;
-      lastTapTime = now;
-      vscode.postMessage({ type: 'focus', nodeId: id });
+      // First tap — wait to see if a second one follows; if not, re-center.
+      if (pendingTapTimer !== null) clearTimeout(pendingTapTimer);
+      pendingTapId = id;
+      pendingTapTimer = setTimeout(() => {
+        pendingTapTimer = null;
+        pendingTapId = null;
+        vscode.postMessage({ type: 'focus', nodeId: id });
+      }, 250);
     });
   }
 </script>
