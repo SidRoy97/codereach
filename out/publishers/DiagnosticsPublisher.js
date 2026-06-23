@@ -43,8 +43,8 @@ const ICONS = {
 // Single job: take a FileAnalysisResult and show squiggles in the editor
 class DiagnosticsPublisher {
     constructor() {
-        // One collection per extension — named "Codescape" in the Problems panel
-        this.collection = vscode.languages.createDiagnosticCollection('Codescape');
+        // One collection per extension — named "CodeReach" in the Problems panel
+        this.collection = vscode.languages.createDiagnosticCollection('CodeReach');
     }
     // Push issues for one file into the Problems panel
     present(result) {
@@ -71,7 +71,7 @@ class DiagnosticsPublisher {
         const msg = `${ICONS[issue.category]} ${issue.message}${issue.suggestion ? `\n💡 ${issue.suggestion}` : ''}`;
         const diag = new vscode.Diagnostic(range, msg, (0, types_1.toVsCodeSeverity)(issue.severity));
         // Source label shown in Problems panel — AI issues get a different label
-        diag.source = issue.source === 'ai' ? 'Codescape (AI)' : 'Codescape';
+        diag.source = issue.source === 'ai' ? 'CodeReach (AI)' : 'CodeReach';
         diag.code = issue.rule;
         return diag;
     }

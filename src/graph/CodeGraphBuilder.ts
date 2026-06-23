@@ -85,13 +85,13 @@ export class CodeGraphBuilder {
     return this.graph;
   }
 
-  // Write the current graph to codescape.json at the workspace root.
+  // Write the current graph to codereach.json at the workspace root.
   // This file is shareable with new developers and AI tools.
   async exportToFile(): Promise<vscode.Uri | null> {
     const root = this.workspaceRoot();
     if (!root) return null;
 
-    const dest = vscode.Uri.file(path.join(root, 'codescape.json'));
+    const dest = vscode.Uri.file(path.join(root, 'codereach.json'));
     const json = JSON.stringify(this.graph, null, 2);
     await vscode.workspace.fs.writeFile(dest, Buffer.from(json, 'utf8'));
     return dest;

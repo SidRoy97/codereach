@@ -95,13 +95,13 @@ export class UnderstandingGenerator {
   async generate(): Promise<void> {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) {
-      vscode.window.showWarningMessage('Codescape: No workspace open.');
+      vscode.window.showWarningMessage('CodeReach: No workspace open.');
       return;
     }
 
     const graph = this.getGraph();
     if (graph.nodes.length === 0) {
-      vscode.window.showWarningMessage('Codescape: No code symbols found to document.');
+      vscode.window.showWarningMessage('CodeReach: No code symbols found to document.');
       return;
     }
 
@@ -112,7 +112,7 @@ export class UnderstandingGenerator {
     // slower and depends on the relevant language extension being installed, so
     // it is off by default and only ever used for this document.
     const usePrecise = vscode.workspace
-      .getConfiguration('codescape')
+      .getConfiguration('codereach')
       .get<boolean>('preciseRelationships', false);
     const precise = usePrecise ? new PreciseRelationships(root) : null;
 
@@ -135,7 +135,7 @@ export class UnderstandingGenerator {
     let aiReady = true;
 
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Codescape: Building understanding…', cancellable: true },
+      { location: vscode.ProgressLocation.Notification, title: 'CodeReach: Building understanding…', cancellable: true },
       async (progress, token) => {
         // Probe the AI first, inside the progress so the notification shows
         // immediately (a cold model load can take several seconds, and we don't
@@ -181,7 +181,7 @@ export class UnderstandingGenerator {
     // structure-only document (outside progress so the dialog is clear).
     if (!aiReady) {
       const choice = await vscode.window.showWarningMessage(
-        'Codescape: No AI response. The document will contain structure only, not AI summaries. ' +
+        'CodeReach: No AI response. The document will contain structure only, not AI summaries. ' +
         'For Ollama: install it, run "ollama pull llama3.2", and make sure "ollama serve" is running. ' +
         'You can also pick a different provider in Settings.',
         'Build structure-only', 'Cancel',
@@ -194,7 +194,7 @@ export class UnderstandingGenerator {
       }
     }
 
-    const outUri = vscode.Uri.file(path.join(root, 'codescape-understanding.json'));
+    const outUri = vscode.Uri.file(path.join(root, 'codereach-understanding.json'));
     await vscode.workspace.fs.writeFile(outUri, Buffer.from(JSON.stringify(doc, null, 2), 'utf8'));
 
     const opened = await vscode.workspace.openTextDocument(outUri);
@@ -202,7 +202,7 @@ export class UnderstandingGenerator {
 
     const symbolCount = Object.values(doc.files).reduce((n, f) => n + f.symbols.length, 0);
     vscode.window.showInformationMessage(
-      `Codescape: codescape-understanding.json written — ${symbolCount} symbol(s) across ${Object.keys(doc.files).length} file(s).`,
+      `CodeReach: codereach-understanding.json written — ${symbolCount} symbol(s) across ${Object.keys(doc.files).length} file(s).`,
     );
   }
 

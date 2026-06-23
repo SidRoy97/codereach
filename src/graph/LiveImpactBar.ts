@@ -14,7 +14,7 @@ export class LiveImpactBar {
     private readonly getRoot: () => string | undefined,
   ) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.item.command = 'codescape.showImpactForCursor';
+    this.item.command = 'codereach.showImpactForCursor';
     this.locator = new SymbolLocator(getGraph);
   }
 

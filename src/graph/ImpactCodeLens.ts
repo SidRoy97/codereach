@@ -40,7 +40,7 @@ export class ImpactCodeLens implements vscode.CodeLensProvider {
 
       lenses.push(new vscode.CodeLens(range, {
         title: `${callerCount} caller(s) · ${affectedCount} affected if changed`,
-        command: 'codescape.showImpact',
+        command: 'codereach.showImpact',
         arguments: [node.id],
       }));
     }

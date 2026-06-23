@@ -44,7 +44,7 @@ export class ProblemsReporter {
   async generate(): Promise<void> {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) {
-      vscode.window.showWarningMessage('Codescape: No workspace open.');
+      vscode.window.showWarningMessage('CodeReach: No workspace open.');
       return;
     }
 
@@ -54,8 +54,8 @@ export class ProblemsReporter {
     const markdown = this.toMarkdown(reported);
     const json = this.toJson(reported);
 
-    const mdUri = vscode.Uri.file(path.join(root, 'codescape-issues.md'));
-    const jsonUri = vscode.Uri.file(path.join(root, 'codescape-issues.json'));
+    const mdUri = vscode.Uri.file(path.join(root, 'codereach-issues.md'));
+    const jsonUri = vscode.Uri.file(path.join(root, 'codereach-issues.json'));
 
     await vscode.workspace.fs.writeFile(mdUri, Buffer.from(markdown, 'utf8'));
     await vscode.workspace.fs.writeFile(jsonUri, Buffer.from(json, 'utf8'));
@@ -65,7 +65,7 @@ export class ProblemsReporter {
 
     const total = reported.reduce((n, f) => n + f.issueCount, 0);
     vscode.window.showInformationMessage(
-      `Codescape: Report written — ${total} issue(s) across ${reported.length} file(s). See codescape-issues.md and .json.`,
+      `CodeReach: Report written — ${total} issue(s) across ${reported.length} file(s). See codereach-issues.md and .json.`,
     );
   }
 
@@ -119,14 +119,14 @@ export class ProblemsReporter {
   // Human-readable markdown grouped by file, then function.
   private toMarkdown(files: ReportedFile[]): string {
     const lines: string[] = [];
-    lines.push('# Codescape — Project Issues Report');
+    lines.push('# CodeReach — Project Issues Report');
     lines.push('');
     lines.push(`Generated: ${new Date().toLocaleString()}`);
     lines.push('');
 
     const total = files.reduce((n, f) => n + f.issueCount, 0);
     if (total === 0) {
-      lines.push('No issues found. Run "Codescape: Analyze Entire Workspace" first if this seems wrong.');
+      lines.push('No issues found. Run "CodeReach: Analyze Entire Workspace" first if this seems wrong.');
       return lines.join('\n');
     }
 

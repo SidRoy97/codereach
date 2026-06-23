@@ -1,4 +1,4 @@
-# Codescape — AI Code Quality & Impact Graph
+# CodeReach — AI Code Quality & Impact Graph
 
 Real-time code quality, security analysis, AI-powered fixes, and an interactive
 code impact graph for VS Code. The structural features need **no AI and no
@@ -10,18 +10,18 @@ before you make it.**
 
 ---
 
-## How Codescape is different
+## How CodeReach is different
 
 There are good code-graph tools now, but most of them are built for a different
-job, and several have requirements Codescape deliberately avoids:
+job, and several have requirements CodeReach deliberately avoids:
 
 - **Most impact-graph tools exist to feed an AI agent** (via MCP servers and a
-  vector index). Codescape's graph drives **human-facing, in-editor UI first** —
+  vector index). CodeReach's graph drives **human-facing, in-editor UI first** —
   a CodeLens over every function, a live impact bar that follows your cursor, an
   interactive graph panel — and *also* exports context for an LLM. The graph is
   for you, not only for a model.
 - **Many require a separate backend** — a Python CLI, an MCP server, a vector
-  database, an embedding model to download. Codescape is **a single extension
+  database, an embedding model to download. CodeReach is **a single extension
   with no server, no CLI, no database**. Install and go.
 - **AI is optional, not the point.** The impact graph, blast radius, safety
   check, and relationship analysis all work with **zero AI calls** and zero GPU.
@@ -50,7 +50,7 @@ service that exists mainly to make an agent smarter.
 - **Flow tracer** — follow execution flow downward from any symbol.
 - **Safety check** — "what breaks if I change this?", with cross-file calls flagged as higher risk.
 - **Find unused symbols** — surface code nothing else calls.
-- Export the whole graph to `codescape.json` to share with teammates or AI tools.
+- Export the whole graph to `codereach.json` to share with teammates or AI tools.
 
 ### Security Analysis
 - SQL injection, XSS, command injection, path traversal.
@@ -77,12 +77,12 @@ service that exists mainly to make an agent smarter.
 - Off by default — nothing heavy runs unless you enable it.
 
 ### Code-comprehension document
-- **Understanding Doc** — generates `codescape-understanding.json`: every symbol, a one-line summary, and its caller/callee relationships. Built to onboard a human to a codebase, or to hand an LLM accurate, structured context instead of raw files.
+- **Understanding Doc** — generates `codereach-understanding.json`: every symbol, a one-line summary, and its caller/callee relationships. Built to onboard a human to a codebase, or to hand an LLM accurate, structured context instead of raw files.
 - **Precise relationships (opt-in)** — resolve relationships from the language server's call hierarchy for ground-truth accuracy, instead of the fast estimate. Toggle from the dashboard.
 
 ### Dashboard & Reports
 - A sidebar **Dashboard** with summary stats, a category breakdown, and a per-file issue list — scopable to the current file or the whole workspace.
-- **Problems Report** — exports a human-readable `codescape-issues.md` and a machine-readable `codescape-issues.json`, grouped by file and enclosing function.
+- **Problems Report** — exports a human-readable `codereach-issues.md` and a machine-readable `codereach-issues.json`, grouped by file and enclosing function.
 
 ---
 
@@ -97,7 +97,7 @@ relevant extension being installed and the project being indexed:
 
 Each language is resolved independently, so calls *between* languages are not
 tracked, and trivial delegating methods may merge. When the server can't resolve
-a symbol, Codescape falls back to the fast estimate for that one. Precise mode is
+a symbol, CodeReach falls back to the fast estimate for that one. Precise mode is
 slower and affects only the Understanding Doc — live features always use the fast path.
 
 ---
@@ -119,7 +119,7 @@ JavaScript, TypeScript, JSX, TSX, Python, Java
 ## Quick Start
 
 1. Install the extension.
-2. Open the **Codescape** view in the activity bar.
+2. Open the **CodeReach** view in the activity bar.
 3. Click **Workspace** to analyze the whole project, or **This File** for the active file.
 4. Click the **CodeLens** above any function to open its impact graph, or generate the **Understanding Doc**.
 
@@ -127,28 +127,28 @@ JavaScript, TypeScript, JSX, TSX, Python, Java
 
 | Command | What it does |
 |---|---|
-| `Codescape: Analyze Current File` | Run quality and security analysis on the active file |
-| `Codescape: Analyze Entire Workspace` | Analyze every supported file |
-| `Codescape: Open Dashboard` | Open the sidebar dashboard |
-| `Codescape: Show Blast Radius for Current File` | How many files depend on the current file |
-| `Codescape: Show Impact for Symbol at Cursor` | Open the impact graph for the symbol under the cursor |
-| `Codescape: Trace Flow from Cursor` | Follow execution flow from a symbol |
-| `Codescape: Safety Check (What Breaks if I Change This)` | List affected call sites, risk-ranked |
-| `Codescape: Find Unused Symbols` | Surface code nothing calls |
-| `Codescape: Generate Code Understanding Doc` | Write `codescape-understanding.json` |
-| `Codescape: Export Code Graph (codescape.json)` | Write the full graph for sharing |
-| `Codescape: Generate Problems Report` | Write `codescape-issues.md` and `.json` |
-| `Codescape: Generate .codescape.json` | Create a project config file |
+| `CodeReach: Analyze Current File` | Run quality and security analysis on the active file |
+| `CodeReach: Analyze Entire Workspace` | Analyze every supported file |
+| `CodeReach: Open Dashboard` | Open the sidebar dashboard |
+| `CodeReach: Show Blast Radius for Current File` | How many files depend on the current file |
+| `CodeReach: Show Impact for Symbol at Cursor` | Open the impact graph for the symbol under the cursor |
+| `CodeReach: Trace Flow from Cursor` | Follow execution flow from a symbol |
+| `CodeReach: Safety Check (What Breaks if I Change This)` | List affected call sites, risk-ranked |
+| `CodeReach: Find Unused Symbols` | Surface code nothing calls |
+| `CodeReach: Generate Code Understanding Doc` | Write `codereach-understanding.json` |
+| `CodeReach: Export Code Graph (codereach.json)` | Write the full graph for sharing |
+| `CodeReach: Generate Problems Report` | Write `codereach-issues.md` and `.json` |
+| `CodeReach: Generate .codereach.json` | Create a project config file |
 
 ## Configuration
 
-All settings live under `codescape.*` in VS Code Settings, including AI provider
+All settings live under `codereach.*` in VS Code Settings, including AI provider
 and model, `analyzeOnSave`, `enableAiAnalysis`, `preciseRelationships`,
 `complexityThreshold`, `duplicateLineThreshold`, and the analyzed `languages`.
 
 ## Privacy
 
-With AI disabled, Codescape runs entirely locally — analysis and the impact
+With AI disabled, CodeReach runs entirely locally — analysis and the impact
 graph never leave your machine. With a local AI provider (Ollama / LM Studio),
 inference also stays local. Only when you select a cloud provider is code sent
 out for analysis.

@@ -84,7 +84,7 @@ class AiScanner {
             return [];
         // Skip very large files — too slow and too many tokens
         if (document.getText().length > 60000) {
-            vscode.window.showWarningMessage('Codescape: File >60KB — skipping AI scan.');
+            vscode.window.showWarningMessage('CodeReach: File >60KB — skipping AI scan.');
             return [];
         }
         const provider = this.config.getAiProvider();
@@ -166,7 +166,7 @@ class AiScanner {
         });
         // Model not pulled yet — give a specific actionable error
         if (res.status === 404) {
-            vscode.window.showErrorMessage(`Codescape: Ollama model "${model}" not found.`, `Run: ollama pull ${model}`);
+            vscode.window.showErrorMessage(`CodeReach: Ollama model "${model}" not found.`, `Run: ollama pull ${model}`);
             throw new Error('model not found');
         }
         if (!res.ok)
@@ -202,12 +202,12 @@ class AiScanner {
         if (res.status === 503) {
             const body = await res.json();
             const wait = Math.ceil(body.estimated_time ?? 20);
-            vscode.window.showWarningMessage(`Codescape: HuggingFace model is loading (~${wait}s). Try again shortly.`);
+            vscode.window.showWarningMessage(`CodeReach: HuggingFace model is loading (~${wait}s). Try again shortly.`);
             throw new Error('model loading');
         }
         // Model name is wrong or gated — need to pick a different one
         if (res.status === 404 || res.status === 403) {
-            vscode.window.showErrorMessage(`Codescape: HuggingFace model "${model}" not found or is gated.`, 'Browse Free Models').then(c => {
+            vscode.window.showErrorMessage(`CodeReach: HuggingFace model "${model}" not found or is gated.`, 'Browse Free Models').then(c => {
                 if (c === 'Browse Free Models') {
                     vscode.env.openExternal(vscode.Uri.parse('https://huggingface.co/models?pipeline_tag=text-generation&sort=trending&search=code'));
                 }
@@ -229,8 +229,8 @@ class AiScanner {
             headers['Authorization'] = `Bearer ${apiKey}`;
         // OpenRouter needs these to track usage and show the app in their dashboard
         if (provider === 'openrouter') {
-            headers['HTTP-Referer'] = 'https://github.com/your-org/codescape';
-            headers['X-Title'] = 'Codescape VS Code Extension';
+            headers['HTTP-Referer'] = 'https://github.com/your-org/codereach';
+            headers['X-Title'] = 'CodeReach VS Code Extension';
         }
         const res = await fetch(`${baseUrl}/v1/chat/completions`, {
             method: 'POST',
@@ -286,7 +286,7 @@ class AiScanner {
                 return [];
         }
         catch {
-            console.error('Codescape: failed to parse AI JSON response');
+            console.error('CodeReach: failed to parse AI JSON response');
             return [];
         }
         return parsed
@@ -312,12 +312,12 @@ class AiScanner {
     showMissingKeyMessage(provider) {
         const signupUrl = KEY_SIGNUP_URLS[provider];
         const label = provider.charAt(0).toUpperCase() + provider.slice(1);
-        vscode.window.showWarningMessage(`Codescape: ${label} needs a free API key. Get one and paste it in Settings → codescape.aiApiKey.`, `Get ${label} Key`, 'Use Ollama Instead (no key)').then(choice => {
+        vscode.window.showWarningMessage(`CodeReach: ${label} needs a free API key. Get one and paste it in Settings → codereach.aiApiKey.`, `Get ${label} Key`, 'Use Ollama Instead (no key)').then(choice => {
             if (choice === `Get ${label} Key`) {
                 vscode.env.openExternal(vscode.Uri.parse(signupUrl));
             }
             if (choice === 'Use Ollama Instead (no key)') {
-                vscode.commands.executeCommand('workbench.action.openSettings', 'codescape.aiProvider');
+                vscode.commands.executeCommand('workbench.action.openSettings', 'codereach.aiProvider');
             }
         });
     }
@@ -326,22 +326,22 @@ class AiScanner {
         const msg = err instanceof Error ? err.message : String(err);
         if (provider === 'ollama' && msg.includes('ECONNREFUSED')) {
             // Ollama server isn't running — give the exact command to start it
-            vscode.window.showErrorMessage('Codescape: Ollama is not running. Start it first.', 'Run: ollama serve', 'Get Ollama').then(c => {
+            vscode.window.showErrorMessage('CodeReach: Ollama is not running. Start it first.', 'Run: ollama serve', 'Get Ollama').then(c => {
                 if (c === 'Get Ollama')
                     vscode.env.openExternal(vscode.Uri.parse('https://ollama.com'));
             });
         }
         else if (msg.includes('401')) {
-            vscode.window.showErrorMessage(`Codescape: Invalid API key for ${provider}. Check Settings → codescape.aiApiKey.`);
+            vscode.window.showErrorMessage(`CodeReach: Invalid API key for ${provider}. Check Settings → codereach.aiApiKey.`);
         }
         else if (msg.includes('429')) {
-            vscode.window.showWarningMessage(`Codescape: Rate limit hit on ${provider} — skipping AI analysis this time.`);
+            vscode.window.showWarningMessage(`CodeReach: Rate limit hit on ${provider} — skipping AI analysis this time.`);
         }
         else if (msg.includes('model loading') || msg.includes('model not found') || msg.includes('model not available')) {
             // Already showed a specific message in the calling method — don't double-notify
         }
         else {
-            console.error(`Codescape AI error [${provider}]:`, msg);
+            console.error(`CodeReach AI error [${provider}]:`, msg);
         }
     }
 }

@@ -10,7 +10,7 @@ interface FileSummary {
   hash: number;
 }
 
-const CACHE_FILE = 'codescape-summaries.json';
+const CACHE_FILE = 'codereach-summaries.json';
 
 const SUMMARY_PROMPT = `In exactly ONE sentence under 20 words, describe what this file does.
 Start with a verb. Focus on single responsibility.
@@ -41,7 +41,7 @@ export class FileSummarizer {
     let newCount = 0;
 
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Codescape: Summarizing files…', cancellable: true },
+      { location: vscode.ProgressLocation.Notification, title: 'CodeReach: Summarizing files…', cancellable: true },
       async (progress, token) => {
         for (let i = 0; i < uris.length; i++) {
           if (token.isCancellationRequested) break;
@@ -85,7 +85,7 @@ export class FileSummarizer {
 
     if (newCount > 0) {
       vscode.window.showInformationMessage(
-        `Codescape: Summarized ${newCount} file(s). Now run "Codescape: Generate AI Context File".`,
+        `CodeReach: Summarized ${newCount} file(s). Now run "CodeReach: Generate AI Context File".`,
       );
     }
 
@@ -120,7 +120,7 @@ export class FileSummarizer {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(cachePath, JSON.stringify(Array.from(this.cache.values()), null, 2));
     } catch (e) {
-      console.error('Codescape: could not save summary cache', e);
+      console.error('CodeReach: could not save summary cache', e);
     }
   }
 

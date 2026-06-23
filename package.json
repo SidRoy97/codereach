@@ -1,17 +1,17 @@
 {
-  "name": "codescape-ai",
-  "displayName": "Codescape — AI Code Quality & Impact Graph",
+  "name": "codereach",
+  "displayName": "CodeReach — Code Quality & Impact Graph",
   "description": "Security, code quality, SOLID analysis, AI-powered fixes, and an interactive code impact graph. Works with Ollama, Groq, HuggingFace, and more.",
-  "version": "0.1.4",
+  "version": "0.1.1",
   "publisher": "SidRoy300497",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SidRoy97/codescape.git"
+    "url": "https://github.com/SidRoy97/codereach.git"
   },
-  "homepage": "https://github.com/SidRoy97/codescape",
+  "homepage": "https://github.com/SidRoy97/codereach",
   "bugs": {
-    "url": "https://github.com/SidRoy97/codescape/issues"
+    "url": "https://github.com/SidRoy97/codereach/issues"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -28,70 +28,70 @@
   "contributes": {
     "commands": [
       {
-        "command": "codescape.analyzeFile",
-        "title": "Codescape: Analyze Current File"
+        "command": "codereach.analyzeFile",
+        "title": "CodeReach: Analyze Current File"
       },
       {
-        "command": "codescape.analyzeWorkspace",
-        "title": "Codescape: Analyze Entire Workspace"
+        "command": "codereach.analyzeWorkspace",
+        "title": "CodeReach: Analyze Entire Workspace"
       },
       {
-        "command": "codescape.clearIssues",
-        "title": "Codescape: Clear All Issues"
+        "command": "codereach.clearIssues",
+        "title": "CodeReach: Clear All Issues"
       },
       {
-        "command": "codescape.openDashboard",
-        "title": "Codescape: Open Dashboard"
+        "command": "codereach.openDashboard",
+        "title": "CodeReach: Open Dashboard"
       },
       {
-        "command": "codescape.generateConfig",
-        "title": "Codescape: Generate .codescape.json"
+        "command": "codereach.generateConfig",
+        "title": "CodeReach: Generate .codereach.json"
       },
       {
-        "command": "codescape.fixWithAi",
-        "title": "Codescape: Fix with AI"
+        "command": "codereach.fixWithAi",
+        "title": "CodeReach: Fix with AI"
       },
       {
-        "command": "codescape.explainIssue",
-        "title": "Codescape: Explain this Issue"
+        "command": "codereach.explainIssue",
+        "title": "CodeReach: Explain this Issue"
       },
       {
-        "command": "codescape.generateUnderstanding",
-        "title": "Codescape: Generate Code Understanding Doc"
+        "command": "codereach.generateUnderstanding",
+        "title": "CodeReach: Generate Code Understanding Doc"
       },
       {
-        "command": "codescape.exportGraph",
-        "title": "Codescape: Export Code Graph (codescape.json)"
+        "command": "codereach.exportGraph",
+        "title": "CodeReach: Export Code Graph (codereach.json)"
       },
       {
-        "command": "codescape.findUnused",
-        "title": "Codescape: Find Unused Symbols"
+        "command": "codereach.findUnused",
+        "title": "CodeReach: Find Unused Symbols"
       },
       {
-        "command": "codescape.reportIssues",
-        "title": "Codescape: Generate Problems Report"
+        "command": "codereach.reportIssues",
+        "title": "CodeReach: Generate Problems Report"
       },
       {
-        "command": "codescape.showBlastRadius",
-        "title": "Codescape: Show Blast Radius for Current File"
+        "command": "codereach.showBlastRadius",
+        "title": "CodeReach: Show Blast Radius for Current File"
       },
       {
-        "command": "codescape.showImpactForCursor",
-        "title": "Codescape: Show Impact for Symbol at Cursor"
+        "command": "codereach.showImpactForCursor",
+        "title": "CodeReach: Show Impact for Symbol at Cursor"
       },
       {
-        "command": "codescape.traceFlow",
-        "title": "Codescape: Trace Flow from Cursor"
+        "command": "codereach.traceFlow",
+        "title": "CodeReach: Trace Flow from Cursor"
       },
       {
-        "command": "codescape.safetyCheck",
-        "title": "Codescape: Safety Check (What Breaks if I Change This)"
+        "command": "codereach.safetyCheck",
+        "title": "CodeReach: Safety Check (What Breaks if I Change This)"
       }
     ],
     "configuration": {
-      "title": "Codescape",
+      "title": "CodeReach",
       "properties": {
-        "codescape.aiProvider": {
+        "codereach.aiProvider": {
           "type": "string",
           "default": "ollama",
           "enum": [
@@ -113,53 +113,53 @@
           "markdownDescription": "Which AI backend to use.\n\n**Free options:** `ollama` (no account), `groq` (free account), `huggingface` (free account)",
           "description": "AI provider. Default is Ollama, which runs locally and free. Install from ollama.com, run \"ollama pull llama3.2\", and it works with no API key. Switch to a cloud provider and set aiApiKey if preferred."
         },
-        "codescape.aiModel": {
+        "codereach.aiModel": {
           "type": "string",
           "default": "llama3.2",
           "markdownDescription": "Model name. Leave blank for the recommended default.\n\n**Ollama:** `qwen2.5-coder:7b` `llama3.2` `codellama`\n\n**Groq:** `qwen-2.5-coder-32b` `llama-3.3-70b-versatile`\n\n**HuggingFace:** `Qwen/Qwen2.5-Coder-7B-Instruct`",
           "description": "Model name for the chosen provider. For Ollama, a model you have pulled (e.g. llama3.2, qwen2.5-coder). For cloud providers, their model id."
         },
-        "codescape.aiApiKey": {
+        "codereach.aiApiKey": {
           "type": "string",
           "default": "",
           "markdownDescription": "API key for cloud providers.\n\n- **Ollama / LM Studio:** leave empty\n- **Groq:** free key at https://console.groq.com\n- **HuggingFace:** free token at https://huggingface.co/settings/tokens\n- **OpenRouter:** free key at https://openrouter.ai"
         },
-        "codescape.aiBaseUrl": {
+        "codereach.aiBaseUrl": {
           "type": "string",
           "default": "http://localhost:11434",
           "description": "Base URL for the chosen provider. Default is the local Ollama server. Cloud providers override this automatically when blank is not used."
         },
-        "codescape.analyzeOnSave": {
+        "codereach.analyzeOnSave": {
           "type": "boolean",
           "default": true,
           "description": "Automatically analyze the file every time you save."
         },
-        "codescape.enableAiAnalysis": {
+        "codereach.enableAiAnalysis": {
           "type": "boolean",
           "default": false,
           "description": "Run AI deep analysis automatically when files are analyzed. Off by default because it runs a local/remote model and can be CPU/GPU heavy. AI features (Understanding Doc) still work on demand when this is off."
         },
-        "codescape.preciseRelationships": {
+        "codereach.preciseRelationships": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the language server's call hierarchy for **ground-truth** caller/callee relationships in the Understanding Doc, instead of the fast built-in heuristic.\n\nMore accurate, but slower (it queries the language server per symbol) and depends on the relevant language extension being installed and indexed (TypeScript works out of the box; Python needs Pylance; Java needs the Java extension). When the language server can't resolve a symbol, Codescape falls back to the heuristic for that symbol.\n\nOnly affects the Understanding Doc — live features always use the fast heuristic."
+          "markdownDescription": "Use the language server's call hierarchy for **ground-truth** caller/callee relationships in the Understanding Doc, instead of the fast built-in heuristic.\n\nMore accurate, but slower (it queries the language server per symbol) and depends on the relevant language extension being installed and indexed (TypeScript works out of the box; Python needs Pylance; Java needs the Java extension). When the language server can't resolve a symbol, CodeReach falls back to the heuristic for that symbol.\n\nOnly affects the Understanding Doc — live features always use the fast heuristic."
         },
-        "codescape.enableStaticAnalysis": {
+        "codereach.enableStaticAnalysis": {
           "type": "boolean",
           "default": true,
           "description": "Run built-in static regex rules."
         },
-        "codescape.complexityThreshold": {
+        "codereach.complexityThreshold": {
           "type": "number",
           "default": 10,
           "description": "Cyclomatic complexity threshold — functions above this are flagged."
         },
-        "codescape.duplicateLineThreshold": {
+        "codereach.duplicateLineThreshold": {
           "type": "number",
           "default": 6,
           "description": "Minimum number of identical lines to flag as a duplicate block."
         },
-        "codescape.languages": {
+        "codereach.languages": {
           "type": "array",
           "default": [
             "javascript",
@@ -176,17 +176,17 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codescape",
-          "title": "Codescape",
+          "id": "codereach",
+          "title": "CodeReach",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "codescape": [
+      "codereach": [
         {
           "type": "webview",
-          "id": "codescape.dashboard",
+          "id": "codereach.dashboard",
           "name": "Dashboard"
         }
       ]
@@ -194,24 +194,24 @@
     "menus": {
       "editor/context": [
         {
-          "command": "codescape.analyzeFile",
-          "group": "codescape@1"
+          "command": "codereach.analyzeFile",
+          "group": "codereach@1"
         },
         {
-          "command": "codescape.showImpactForCursor",
-          "group": "codescape@2"
+          "command": "codereach.showImpactForCursor",
+          "group": "codereach@2"
         },
         {
-          "command": "codescape.safetyCheck",
-          "group": "codescape@3"
+          "command": "codereach.safetyCheck",
+          "group": "codereach@3"
         },
         {
-          "command": "codescape.traceFlow",
-          "group": "codescape@4"
+          "command": "codereach.traceFlow",
+          "group": "codereach@4"
         },
         {
-          "command": "codescape.showBlastRadius",
-          "group": "codescape@5"
+          "command": "codereach.showBlastRadius",
+          "group": "codereach@5"
         }
       ]
     }

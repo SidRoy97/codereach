@@ -26,8 +26,8 @@ export class GraphPanel {
 
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
-        'codescape.graph',
-        'Codescape',
+        'codereach.graph',
+        'CodeReach',
         vscode.ViewColumn.Beside,
         {
           enableScripts: true,
@@ -65,7 +65,7 @@ export class GraphPanel {
     // a clear status to the webview so the panel never sits on the placeholder
     // without explanation, and log details for the dev console.
     if (graph.nodes.length === 0) {
-      console.warn('[Codescape] Impact: graph is empty when rendering', nodeId);
+      console.warn('[CodeReach] Impact: graph is empty when rendering', nodeId);
       this.panel.webview.postMessage({
         type: 'status',
         text: 'The code graph is empty. Run an analysis or reopen the file, then click again.',
@@ -76,7 +76,7 @@ export class GraphPanel {
     const analyzer = new ImpactAnalyzer(graph);
     const impact   = analyzer.analyze(nodeId);
     if (!impact) {
-      console.warn('[Codescape] Impact: node id not found in graph:', nodeId,
+      console.warn('[CodeReach] Impact: node id not found in graph:', nodeId,
         '\nAvailable ids sample:', graph.nodes.slice(0, 10).map(n => n.id));
       this.panel.webview.postMessage({
         type: 'status',

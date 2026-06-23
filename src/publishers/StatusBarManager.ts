@@ -8,7 +8,7 @@ export class StatusBarManager implements vscode.Disposable {
 
   constructor(private readonly store: IResultStore) {
     // Clicking the status bar opens the dashboard
-    this.item.command = 'codescape.openDashboard';
+    this.item.command = 'codereach.openDashboard';
     this.item.show();
     this.render();
   }
@@ -22,17 +22,17 @@ export class StatusBarManager implements vscode.Disposable {
 
     if (total === 0) {
       // Green checkmark when the workspace is clean
-      this.item.text             = '$(check) Codescape';
+      this.item.text             = '$(check) CodeReach';
       this.item.backgroundColor  = undefined;
-      this.item.tooltip          = 'Codescape: No issues found';
+      this.item.tooltip          = 'CodeReach: No issues found';
       return;
     }
 
     const parts: string[] = [];
     if (errors   > 0) parts.push(`$(error) ${errors}`);
     if (warnings > 0) parts.push(`$(warning) ${warnings}`);
-    this.item.text            = `Codescape: ${parts.join('  ')}`;
-    this.item.tooltip         = `Codescape: ${total} issue(s) — click to open dashboard`;
+    this.item.text            = `CodeReach: ${parts.join('  ')}`;
+    this.item.tooltip         = `CodeReach: ${total} issue(s) — click to open dashboard`;
     this.item.backgroundColor = errors > 0
       ? new vscode.ThemeColor('statusBarItem.errorBackground')
       : new vscode.ThemeColor('statusBarItem.warningBackground');

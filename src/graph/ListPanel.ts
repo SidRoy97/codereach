@@ -34,8 +34,8 @@ export class ListPanel {
 
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
-        'codescape.list',
-        'Codescape',
+        'codereach.list',
+        'CodeReach',
         vscode.ViewColumn.Beside,
         { enableScripts: true, localResourceRoots: [this.extensionUri] },
       );

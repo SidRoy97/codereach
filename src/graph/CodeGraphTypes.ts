@@ -40,7 +40,7 @@ export interface CodeEdge {
 }
 
 // The complete graph: every symbol and every relationship between them.
-// This is also exactly what gets written to codescape.json — the
+// This is also exactly what gets written to codereach.json — the
 // in-memory graph and the shareable file are the same shape, so no
 // conversion step is ever needed.
 export interface CodeGraph {

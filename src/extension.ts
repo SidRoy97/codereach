@@ -40,7 +40,7 @@ import { ListRow }              from './graph/ListPanel';
 
 import { FileAnalysisResult }   from './types';
 
-// Languages Codescape analyzes and graphs.
+// Languages CodeReach analyzes and graphs.
 const SUPPORTED_LANGUAGES = [
   'javascript', 'javascriptreact',
   'typescript', 'typescriptreact',
@@ -48,14 +48,14 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 export function activate(context: vscode.ExtensionContext): void {
-  console.log('Codescape: activating…');
+  console.log('CodeReach: activating…');
   try {
     activateInternal(context);
-    console.log('Codescape: activated successfully');
+    console.log('CodeReach: activated successfully');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('Codescape: activation failed —', msg);
-    vscode.window.showErrorMessage(`Codescape failed to start: ${msg}`);
+    console.error('CodeReach: activation failed —', msg);
+    vscode.window.showErrorMessage(`CodeReach failed to start: ${msg}`);
   }
 }
 
@@ -74,9 +74,9 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // After every analysis: update squiggles, status bar, dashboard.
   const onComplete = (result: FileAnalysisResult): void => {
-    try { diagPub.present(result); } catch (e) { console.error('Codescape diagPub error', e); }
-    try { statusBar.render();      } catch (e) { console.error('Codescape statusBar error', e); }
-    try { dashboard.refresh();     } catch (e) { console.error('Codescape dashboard error', e); }
+    try { diagPub.present(result); } catch (e) { console.error('CodeReach diagPub error', e); }
+    try { statusBar.render();      } catch (e) { console.error('CodeReach statusBar error', e); }
+    try { dashboard.refresh();     } catch (e) { console.error('CodeReach dashboard error', e); }
   };
 
   const orchestrator = new AnalysisOrchestrator(
@@ -114,7 +114,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // Blast-radius status bar item (now computed from the graph).
   const blastBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-  blastBar.command = 'codescape.showBlastRadius';
+  blastBar.command = 'codereach.showBlastRadius';
   blastBar.tooltip = 'Click to see what depends on this file';
   context.subscriptions.push(blastBar);
 
@@ -144,7 +144,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
     try {
       await orchestrator.analyze(document, debounceMs);
     } catch (e) {
-      console.error('Codescape analysis error', e);
+      console.error('CodeReach analysis error', e);
     }
   };
 
@@ -175,22 +175,22 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // --- Analysis commands ---
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.analyzeFile', async () => {
+    vscode.commands.registerCommand('codereach.analyzeFile', async () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return; }
+      if (!editor) { vscode.window.showWarningMessage('CodeReach: Open a file first.'); return; }
 
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'Codescape: Analyzing…' },
+        { location: vscode.ProgressLocation.Notification, title: 'CodeReach: Analyzing…' },
         async () => {
           const result = await orchestrator.analyze(editor.document);
           if (!result) {
-            vscode.window.showInformationMessage(`Codescape: ${editor.document.languageId} is not supported.`);
+            vscode.window.showInformationMessage(`CodeReach: ${editor.document.languageId} is not supported.`);
             return;
           }
           const n = result.issues.length;
           const file = vscode.workspace.asRelativePath(editor.document.uri);
           vscode.window.showInformationMessage(
-            n === 0 ? `Codescape: No issues in ${file}` : `Codescape: ${n} issue(s) in ${file}`,
+            n === 0 ? `CodeReach: No issues in ${file}` : `CodeReach: ${n} issue(s) in ${file}`,
           );
         },
       );
@@ -198,15 +198,15 @@ function activateInternal(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.analyzeWorkspace', async () => {
+    vscode.commands.registerCommand('codereach.analyzeWorkspace', async () => {
       const exts = config.getLanguages().flatMap(langToExts).join(',');
       const uris = await vscode.workspace.findFiles(
         `**/*.{${exts}}`, '{**/node_modules/**,**/dist/**,**/out/**}',
       );
-      if (!uris.length) { vscode.window.showWarningMessage('Codescape: No supported files found.'); return; }
+      if (!uris.length) { vscode.window.showWarningMessage('CodeReach: No supported files found.'); return; }
 
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Codescape: Scanning ${uris.length} files…`, cancellable: true },
+        { location: vscode.ProgressLocation.Notification, title: `CodeReach: Scanning ${uris.length} files…`, cancellable: true },
         async (progress, token) => {
           for (let i = 0; i < uris.length; i++) {
             if (token.isCancellationRequested) break;
@@ -217,30 +217,30 @@ function activateInternal(context: vscode.ExtensionContext): void {
             progress.report({ message: `${i + 1}/${uris.length}`, increment: (1 / uris.length) * 100 });
           }
           const total = store.getAll().reduce((n, r) => n + r.issues.length, 0);
-          vscode.window.showInformationMessage(`Codescape: Done — ${total} issue(s) in ${store.getAll().length} files`);
+          vscode.window.showInformationMessage(`CodeReach: Done — ${total} issue(s) in ${store.getAll().length} files`);
         },
       );
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.clearIssues', () => {
+    vscode.commands.registerCommand('codereach.clearIssues', () => {
       store.clear();
       diagPub.clearAll();
       statusBar.render();
       dashboard.refresh();
-      vscode.window.showInformationMessage('Codescape: All issues cleared.');
+      vscode.window.showInformationMessage('CodeReach: All issues cleared.');
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.openDashboard', () => {
-      vscode.commands.executeCommand('workbench.view.extension.codescape');
+    vscode.commands.registerCommand('codereach.openDashboard', () => {
+      vscode.commands.executeCommand('workbench.view.extension.codereach');
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.generateConfig', () => {
+    vscode.commands.registerCommand('codereach.generateConfig', () => {
       generateProjectConfig();
     }),
   );
@@ -252,7 +252,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const ensureGraph = async (): Promise<void> => {
     if (graphBuilder.getGraph().nodes.length === 0) {
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'Codescape: Building code graph…' },
+        { location: vscode.ProgressLocation.Notification, title: 'CodeReach: Building code graph…' },
         async () => {
           await graphBuilder.build();
           codeLens.refresh();
@@ -262,7 +262,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.exportGraph', async () => {
+    vscode.commands.registerCommand('codereach.exportGraph', async () => {
       await graphBuilder.build();
       const uri = await graphBuilder.exportToFile();
       if (uri) {
@@ -274,31 +274,31 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // Opened by the CodeLens above each function.
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.showImpact', (nodeId: string) => {
+    vscode.commands.registerCommand('codereach.showImpact', (nodeId: string) => {
       graphPanel.show(nodeId);
     }),
   );
 
   // Write a project-wide problems report (markdown + json).
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.reportIssues', async () => {
+    vscode.commands.registerCommand('codereach.reportIssues', async () => {
       try {
         await problemsReporter.generate();
       } catch (e) {
-        vscode.window.showErrorMessage(`Codescape: Report failed — ${e}`);
+        vscode.window.showErrorMessage(`CodeReach: Report failed — ${e}`);
       }
     }),
   );
 
   // Show which files depend on the active file, as a clickable list.
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.showBlastRadius', async () => {
+    vscode.commands.registerCommand('codereach.showBlastRadius', async () => {
       // When this runs from a dashboard button, the webview holds focus and
       // activeTextEditor is undefined, so I fall back to the first visible
       // file editor before giving up.
       const editor = vscode.window.activeTextEditor
         ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
-      if (!editor) { vscode.window.showWarningMessage('Codescape: Open a file in the editor first.'); return; }
+      if (!editor) { vscode.window.showWarningMessage('CodeReach: Open a file in the editor first.'); return; }
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!root) return;
 
@@ -337,9 +337,9 @@ function activateInternal(context: vscode.ExtensionContext): void {
   // the symbol. Entry points and dynamic calls may be false positives, so
   // this is framed as "review", not "delete".
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.findUnused', async () => {
+    vscode.commands.registerCommand('codereach.findUnused', async () => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!root) { vscode.window.showWarningMessage('Codescape: No workspace open.'); return; }
+      if (!root) { vscode.window.showWarningMessage('CodeReach: No workspace open.'); return; }
 
       await ensureGraph();
       const unused = new ImpactAnalyzer(graphBuilder.getGraph()).findUnusedSymbols();
@@ -368,18 +368,18 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const symbolUnderCursor = async (): Promise<{ id: string; name: string } | null> => {
     const editor = vscode.window.activeTextEditor;
     const root = getRoot();
-    if (!editor || !root) { vscode.window.showWarningMessage('Codescape: Open a file first.'); return null; }
+    if (!editor || !root) { vscode.window.showWarningMessage('CodeReach: Open a file first.'); return null; }
 
     await ensureGraph();
     const relFile = path.relative(root, editor.document.uri.fsPath);
     const node = symbolLocator.findEnclosing(relFile, editor.selection.active.line);
-    if (!node) { vscode.window.showInformationMessage('Codescape: Place the cursor inside a function or method.'); return null; }
+    if (!node) { vscode.window.showInformationMessage('CodeReach: Place the cursor inside a function or method.'); return null; }
     return { id: node.id, name: node.name };
   };
 
   // Feature 1 click target: open the impact graph for the cursor's symbol.
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.showImpactForCursor', async () => {
+    vscode.commands.registerCommand('codereach.showImpactForCursor', async () => {
       const sym = await symbolUnderCursor();
       if (sym) graphPanel.show(sym.id);
     }),
@@ -387,7 +387,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // Feature 2: trace the flow downward from the cursor's symbol.
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.traceFlow', async () => {
+    vscode.commands.registerCommand('codereach.traceFlow', async () => {
       const sym = await symbolUnderCursor();
       if (!sym) return;
 
@@ -404,7 +404,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
 
   // Feature 3: safety check — what breaks if the cursor's symbol changes.
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.safetyCheck', async () => {
+    vscode.commands.registerCommand('codereach.safetyCheck', async () => {
       const sym = await symbolUnderCursor();
       if (!sym) return;
 
@@ -420,12 +420,12 @@ function activateInternal(context: vscode.ExtensionContext): void {
     }),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand('codescape.generateUnderstanding', async () => {
+    vscode.commands.registerCommand('codereach.generateUnderstanding', async () => {
       try {
         await ensureGraph();
         await understanding.generate();
       } catch (e) {
-        vscode.window.showErrorMessage(`Codescape: Understanding doc failed — ${e}`);
+        vscode.window.showErrorMessage(`CodeReach: Understanding doc failed — ${e}`);
       }
     }),
   );
@@ -510,7 +510,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  console.log('Codescape: deactivated');
+  console.log('CodeReach: deactivated');
 }
 
 // Map VS Code language ids to file extensions for workspace scan globs.
@@ -526,14 +526,14 @@ function langToExts(lang: string): string[] {
   return map[lang] ?? [lang];
 }
 
-// Write a starter .codescape.json to the workspace root.
+// Write a starter .codereach.json to the workspace root.
 async function generateProjectConfig(): Promise<void> {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!root) { vscode.window.showWarningMessage('Codescape: No workspace open.'); return; }
+  if (!root) { vscode.window.showWarningMessage('CodeReach: No workspace open.'); return; }
 
   const fs   = await import('fs');
   const path = await import('path');
-  const dest = path.join(root, '.codescape.json');
+  const dest = path.join(root, '.codereach.json');
 
   const starter = {
     aiProvider:             'ollama',
@@ -548,5 +548,5 @@ async function generateProjectConfig(): Promise<void> {
   fs.writeFileSync(dest, JSON.stringify(starter, null, 2));
   const doc = await vscode.workspace.openTextDocument(dest);
   await vscode.window.showTextDocument(doc);
-  vscode.window.showInformationMessage('Codescape: .codescape.json created.');
+  vscode.window.showInformationMessage('CodeReach: .codereach.json created.');
 }

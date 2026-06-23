@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
-// Single job: render the sidebar dashboard webview. It shows summary stats,
+// Render the sidebar dashboard webview. It shows summary stats,
 // a grouped action toolbar, a category breakdown, and a per-file issue list.
 // Buttons post a message that maps to an existing command via executeCommand —
 // the dashboard holds no feature logic itself, so there is exactly one
@@ -100,38 +100,38 @@ class DashboardProvider {
         const msg = message;
         if (msg.type === 'command' && typeof msg.id === 'string') {
             const allowed = new Set([
-                'codescape.analyzeFile',
-                'codescape.analyzeWorkspace',
-                'codescape.clearIssues',
-                'codescape.showBlastRadius',
-                'codescape.findUnused',
-                'codescape.exportGraph',
-                'codescape.generateUnderstanding',
-                'codescape.reportIssues',
-                'codescape.generateConfig',
+                'codereach.analyzeFile',
+                'codereach.analyzeWorkspace',
+                'codereach.clearIssues',
+                'codereach.showBlastRadius',
+                'codereach.findUnused',
+                'codereach.exportGraph',
+                'codereach.generateUnderstanding',
+                'codereach.reportIssues',
+                'codereach.generateConfig',
             ]);
             if (allowed.has(msg.id)) {
                 // Set scope before running, so the refresh after analysis shows the
                 // right slice.
-                if (msg.id === 'codescape.analyzeFile')
+                if (msg.id === 'codereach.analyzeFile')
                     this.scopeToActiveFile();
-                if (msg.id === 'codescape.analyzeWorkspace')
+                if (msg.id === 'codereach.analyzeWorkspace')
                     this.scopeToWorkspace();
-                if (msg.id === 'codescape.clearIssues')
+                if (msg.id === 'codereach.clearIssues')
                     this.scope = { kind: 'workspace' };
                 vscode.commands.executeCommand(msg.id);
             }
             return;
         }
         if (msg.type === 'openSettings') {
-            vscode.commands.executeCommand('workbench.action.openSettings', 'codescape');
+            vscode.commands.executeCommand('workbench.action.openSettings', 'codereach');
             return;
         }
         // Flip the precise-relationships setting and re-render so the toggle
         // reflects the new state. The setting is the single source of truth — the
         // Understanding Doc reads the same value when it runs.
         if (msg.type === 'togglePrecise') {
-            const cfg = vscode.workspace.getConfiguration('codescape');
+            const cfg = vscode.workspace.getConfiguration('codereach');
             const current = cfg.get('preciseRelationships', false);
             cfg.update('preciseRelationships', !current, vscode.ConfigurationTarget.Global)
                 .then(() => this.refresh());
@@ -164,7 +164,7 @@ class DashboardProvider {
         // Whether precise (language-server) relationships are enabled, so the
         // toggle in the Understand Code group reflects the current setting.
         const preciseOn = vscode.workspace
-            .getConfiguration('codescape')
+            .getConfiguration('codereach')
             .get('preciseRelationships', false);
         // A short label describing what the user is looking at.
         const scopeLabel = this.scope.kind === 'file'
@@ -289,24 +289,24 @@ class DashboardProvider {
 
 <div class="brand">
   <div class="brand-logo"></div>
-  <div class="brand-name">Codescape</div>
+  <div class="brand-name">codereach</div>
 </div>
 
 <div class="group">
   <div class="group-title">Analyze</div>
   <div class="btn-row">
-    <button class="btn ${fileScopeActive ? 'btn-primary' : ''}" data-cmd="codescape.analyzeFile"><span class="ic">⚡</span>This File</button>
-    <button class="btn ${!fileScopeActive ? 'btn-primary' : ''}" data-cmd="codescape.analyzeWorkspace"><span class="ic">📂</span>Workspace</button>
-    <button class="btn" data-cmd="codescape.clearIssues"><span class="ic">🗑</span>Clear</button>
+    <button class="btn ${fileScopeActive ? 'btn-primary' : ''}" data-cmd="codereach.analyzeFile"><span class="ic">⚡</span>This File</button>
+    <button class="btn ${!fileScopeActive ? 'btn-primary' : ''}" data-cmd="codereach.analyzeWorkspace"><span class="ic">📂</span>Workspace</button>
+    <button class="btn" data-cmd="codereach.clearIssues"><span class="ic">🗑</span>Clear</button>
   </div>
 </div>
 
 <div class="group">
   <div class="group-title">Understand Code</div>
   <div class="btn-row">
-    <button class="btn" data-cmd="codescape.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
-    <button class="btn" data-cmd="codescape.showBlastRadius"><span class="ic">💥</span>Blast Radius</button>
-    <button class="btn" data-cmd="codescape.findUnused"><span class="ic">🔍</span>Unused</button>
+    <button class="btn" data-cmd="codereach.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
+    <button class="btn" data-cmd="codereach.showBlastRadius"><span class="ic">💥</span>Blast Radius</button>
+    <button class="btn" data-cmd="codereach.findUnused"><span class="ic">🔍</span>Unused</button>
   </div>
   <button class="btn toggle ${preciseOn ? 'active' : ''}" data-precise="1" title="When on, the Understanding Doc resolves relationships from the language server (ground truth) instead of the fast heuristic. Slower; needs the language extension installed.">
     <span class="ic">${preciseOn ? '🎯' : '⚡'}</span>Precise relationships: ${preciseOn ? 'On' : 'Off'}
@@ -321,9 +321,9 @@ class DashboardProvider {
 <div class="group">
   <div class="group-title">Reports &amp; Config</div>
   <div class="btn-row">
-    <button class="btn" data-cmd="codescape.reportIssues"><span class="ic">📊</span>Problems Report</button>
-    <button class="btn" data-cmd="codescape.exportGraph"><span class="ic">📤</span>Export Graph</button>
-    <button class="btn" data-cmd="codescape.generateConfig"><span class="ic">⚙️</span>Config</button>
+    <button class="btn" data-cmd="codereach.reportIssues"><span class="ic">📊</span>Problems Report</button>
+    <button class="btn" data-cmd="codereach.exportGraph"><span class="ic">📤</span>Export Graph</button>
+    <button class="btn" data-cmd="codereach.generateConfig"><span class="ic">⚙️</span>Config</button>
     <button class="btn" data-settings="1"><span class="ic">🔧</span>Settings</button>
   </div>
 </div>
@@ -437,4 +437,4 @@ ${fileCards}
     }
 }
 exports.DashboardProvider = DashboardProvider;
-DashboardProvider.viewId = 'codescape.dashboard';
+DashboardProvider.viewId = 'codereach.dashboard';

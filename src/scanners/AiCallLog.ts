@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 // the model — including anything that fires after a command appears finished.
 // This is a diagnostic aid; it makes no network calls of its own.
 export class AiCallLog {
-  private static channel = vscode.window.createOutputChannel('Codescape AI Calls');
+  private static channel = vscode.window.createOutputChannel('CodeReach AI Calls');
 
   // I note the start of a call and return a function to call when it finishes,
   // so each entry shows who triggered it and how long the model took.
