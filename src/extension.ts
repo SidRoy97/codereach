@@ -47,6 +47,22 @@ const SUPPORTED_LANGUAGES = [
   'python', 'java',
 ];
 
+// Files CodeReach writes to the workspace root. Opening them triggers
+// onDidChangeActiveTextEditor — we skip the graph traversal for these so
+// we don't spike CPU right after the Understanding Doc or Problems Report
+// is generated.
+const CODEREACH_OUTPUT_FILES = new Set([
+  'codereach.json',
+  'codereach-understanding.json',
+  'codereach-problems.md',
+  'codereach-problems.json',
+]);
+
+const isCoderReachOutput = (fsPath: string): boolean => {
+  const fname = path.basename(fsPath);
+  return fname.startsWith('codereach-') || CODEREACH_OUTPUT_FILES.has(fname);
+};
+
 export function activate(context: vscode.ExtensionContext): void {
   console.log('CodeReach: activating…');
   try {
@@ -419,6 +435,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
       });
     }),
   );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('codereach.generateUnderstanding', async () => {
       try {
@@ -453,6 +470,15 @@ function activateInternal(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(async editor => {
       if (!editor) { blastBar.hide(); liveImpactBar.update(undefined); return; }
+
+      // Skip CodeReach's own output files — opening them would trigger a full
+      // graph traversal for no reason, causing a CPU spike after the
+      // Understanding Doc or Problems Report is generated.
+      if (isCoderReachOutput(editor.document.uri.fsPath)) {
+        blastBar.hide();
+        return;
+      }
+
       await analyzeDocument(editor.document);
       updateBlastBar(editor.document);
       liveImpactBar.update(editor);
