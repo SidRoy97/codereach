@@ -157,10 +157,16 @@ export class UnderstandingGenerator {
     if (!aiReady) {
       const choice = await vscode.window.showWarningMessage(
         'CodeReach: No AI response. The document will contain structure only, not AI summaries. ' +
-        'For Ollama: pull a model first ("ollama pull llama3.2"), then start the server ("ollama serve"). ' +
-        'You can also pick a different provider in Settings.',
-        'Build structure-only', 'Cancel',
+        'For Ollama: start the server by running "ollama serve" in a terminal. ' +
+        'You can also switch to a cloud provider in Settings.',
+        'Build structure-only', 'Start Ollama', 'Cancel',
       );
+      if (choice === 'Start Ollama') {
+        const terminal = vscode.window.createTerminal('CodeReach: Ollama');
+        terminal.show();
+        terminal.sendText('ollama serve');
+        return;
+      }
       if (choice !== 'Build structure-only') return;
 
       for (const [file, nodes] of byFile) {

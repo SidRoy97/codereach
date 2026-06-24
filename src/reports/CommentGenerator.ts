@@ -106,12 +106,17 @@ export class CommentGenerator {
     if (!aiReady) {
       const choice = await vscode.window.showWarningMessage(
         'CodeReach: No AI response — comments cannot be generated. ' +
-        'For Ollama: pull a model first ("ollama pull llama3.2"), then start the server ("ollama serve"). ' +
+        'For Ollama: start the server by running "ollama serve" in a terminal. ' +
         'You can also switch to a cloud provider (Groq, HuggingFace) in Settings → codereach.aiProvider.',
+        'Start Ollama',
         'Open Settings',
         'Get Ollama',
       );
-      if (choice === 'Open Settings') {
+      if (choice === 'Start Ollama') {
+        const terminal = vscode.window.createTerminal('CodeReach: Ollama');
+        terminal.show();
+        terminal.sendText('ollama serve');
+      } else if (choice === 'Open Settings') {
         vscode.commands.executeCommand('workbench.action.openSettings', 'codereach.aiProvider');
       } else if (choice === 'Get Ollama') {
         vscode.env.openExternal(vscode.Uri.parse('https://ollama.com'));
