@@ -106,7 +106,7 @@ export class CommentGenerator {
     if (!aiReady) {
       const choice = await vscode.window.showWarningMessage(
         'CodeReach: No AI response — comments cannot be generated. ' +
-        'For Ollama: make sure it is running ("ollama serve") and you have pulled a model ("ollama pull llama3.2"). ' +
+        'For Ollama: pull a model first ("ollama pull llama3.2"), then start the server ("ollama serve"). ' +
         'You can also switch to a cloud provider (Groq, HuggingFace) in Settings → codereach.aiProvider.',
         'Open Settings',
         'Get Ollama',
