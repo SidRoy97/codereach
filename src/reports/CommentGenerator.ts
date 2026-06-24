@@ -238,7 +238,7 @@ export class CommentGenerator {
     if (!indent) return comment;
     return comment
       .split('\n')
-      .map((line, i) => {
+      .map((line, _i) => {
         // Python docstrings: first line (""") goes right after indent,
         // subsequent lines also get indented.
         if (style === 'python') return indent + line;
