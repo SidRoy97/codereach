@@ -208,13 +208,27 @@ export class UnderstandingGenerator {
   }
 
   private detectOllamaState(): 'not-installed' | 'no-models' | 'has-models' {
-    try {
-      const result = execSync('ollama list 2>&1', { timeout: 3000 }).toString().trim();
-      const lines = result.split('\n').filter(l => l.trim());
-      return lines.length <= 1 ? 'no-models' : 'has-models';
-    } catch {
-      return 'not-installed';
+    // VS Code's Node process does not inherit the shell PATH on macOS/Linux,
+    // so plain 'ollama' may not resolve even when it is installed.
+    // Try common install locations before giving up.
+    const candidates = [
+      'ollama',
+      '/usr/local/bin/ollama',
+      '/opt/homebrew/bin/ollama',
+      '/usr/bin/ollama',
+    ];
+    for (const bin of candidates) {
+      try {
+        const result = execSync(`${bin} list 2>&1`, { timeout: 3000 }).toString().trim();
+        // "ollama list" with no models prints just the header line.
+        // With models it has additional lines.
+        const lines = result.split('\n').filter((l: string) => l.trim());
+        return lines.length <= 1 ? 'no-models' : 'has-models';
+      } catch {
+        // Try next candidate.
+      }
     }
+    return 'not-installed';
   }
 
   private groupByFile(nodes: CodeNode[]): Map<string, CodeNode[]> {

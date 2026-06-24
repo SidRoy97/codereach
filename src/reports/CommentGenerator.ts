@@ -225,16 +225,27 @@ export class CommentGenerator {
   // precise message — rather than always saying the same thing regardless
   // of whether Ollama is installed, has models, or just needs the server started.
   private detectOllamaState(): 'not-installed' | 'no-models' | 'has-models' {
-    try {
-      // If 'ollama' is not on PATH this will throw.
-      const result = execSync('ollama list 2>&1', { timeout: 3000 }).toString().trim();
-      // "ollama list" with no models prints just the header line "NAME  ID  SIZE  MODIFIED"
-      // With models it has additional lines.
-      const lines = result.split('\n').filter(l => l.trim());
-      return lines.length <= 1 ? 'no-models' : 'has-models';
-    } catch {
-      return 'not-installed';
+    // VS Code's Node process does not inherit the shell PATH on macOS/Linux,
+    // so plain 'ollama' may not resolve even when it is installed.
+    // Try common install locations before giving up.
+    const candidates = [
+      'ollama',
+      '/usr/local/bin/ollama',
+      '/opt/homebrew/bin/ollama',
+      '/usr/bin/ollama',
+    ];
+    for (const bin of candidates) {
+      try {
+        const result = execSync(`${bin} list 2>&1`, { timeout: 3000 }).toString().trim();
+        // "ollama list" with no models prints just the header line.
+        // With models it has additional lines.
+        const lines = result.split('\n').filter((l: string) => l.trim());
+        return lines.length <= 1 ? 'no-models' : 'has-models';
+      } catch {
+        // Try next candidate.
+      }
     }
+    return 'not-installed';
   }
 
   private async probeAi(): Promise<boolean> {
