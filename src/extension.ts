@@ -10,6 +10,7 @@ import { DuplicateScanner }     from './scanners/DuplicateScanner';
 import { AiScanner }            from './scanners/AiScanner';
 import { TaintScanner }         from './scanners/TaintScanner';
 import { CrossFileTaintScanner } from './scanners/CrossFileTaintScanner';
+import { CommentGenerator }    from './reports/CommentGenerator';
 import { AnalysisOrchestrator } from './AnalysisOrchestrator';
 
 // UI publishers
@@ -124,6 +125,9 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const taintScanner = new TaintScanner(parser);
   // Phase 2: cross-file via the code graph, on-demand.
   const crossFileTaint = new CrossFileTaintScanner(parser, () => graphBuilder.getGraph());
+
+  // Auto-comment generator — inserts JSDoc/docstrings above uncommented functions.
+  const commentGenerator = new CommentGenerator(parser, ai);
 
   // Blast-radius status bar item.
   const blastBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
@@ -418,6 +422,23 @@ function activateInternal(context: vscode.ExtensionContext): void {
         await understanding.generate();
       } catch (e) {
         vscode.window.showErrorMessage(`CodeReach: Understanding doc failed — ${e}`);
+      }
+    }),
+  );
+
+  // Auto-comment: insert JSDoc/docstrings above uncommented functions in the active file.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codereach.generateComments', async () => {
+      const editor = vscode.window.activeTextEditor
+        ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
+      if (!editor) {
+        vscode.window.showWarningMessage('CodeReach: Open a file first.');
+        return;
+      }
+      try {
+        await commentGenerator.generateForFile(editor.document);
+      } catch (e) {
+        vscode.window.showErrorMessage(`CodeReach: Comment generation failed — ${e}`);
       }
     }),
   );

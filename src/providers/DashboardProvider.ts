@@ -72,6 +72,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
         'codereach.generateConfig',
         'codereach.taintScan',
         'codereach.taintScanWorkspace',
+        'codereach.generateComments',
       ]);
       if (allowed.has(msg.id)) {
         if (msg.id === 'codereach.analyzeFile') this.scopeToActiveFile();
@@ -273,6 +274,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
     <button class="btn" data-cmd="codereach.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
     <button class="btn" data-cmd="codereach.showBlastRadius"><span class="ic">💥</span>Blast Radius</button>
     <button class="btn" data-cmd="codereach.findUnused"><span class="ic">🔍</span>Unused</button>
+    <button class="btn" data-cmd="codereach.generateComments"><span class="ic">✍️</span>Auto-Comment</button>
   </div>
   <button class="btn toggle ${preciseOn ? 'active' : ''}" data-precise="1" title="When on, the Understanding Doc resolves relationships from the language server (ground truth) instead of the fast heuristic. Slower; needs the language extension installed.">
     <span class="ic">${preciseOn ? '🎯' : '⚡'}</span>Precise relationships: ${preciseOn ? 'On' : 'Off'}
