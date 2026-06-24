@@ -75,21 +75,24 @@ export class CommentGenerator {
 
     const aiReady = await this.probeAi();
     if (!aiReady) {
-      await vscode.window.showWarningMessage(
+      const choice = await vscode.window.showWarningMessage(
         'CodeReach: No AI response — comments cannot be generated. ' +
-        'For Ollama: run "ollama serve" in a terminal, then click ✍️ Auto-Comment again. ' +
-        'If you have not installed Ollama yet: get it from ollama.com and run "ollama pull llama3.2" first. ' +
+        'For Ollama: run "ollama serve" in a terminal, then click Auto-Comment again. ' +
+        'If you have not installed Ollama yet: get it from ollama.com and run "ollama pull <model>" first. ' +
         'You can also switch to a cloud provider in Settings → codereach.aiProvider.',
-        'OK',
+        'Comment without AI', 'Cancel',
       );
+      if (choice !== 'Comment without AI') return;
+      // Fall through to generate structural comments without AI.
+      await this.runGeneration(document, style, false);
       return;
     }
 
-    await this.runGeneration(document, style);
+    await this.runGeneration(document, style, true);
   }
 
   // Core generation logic — separated so it can be called after Ollama starts.
-  private async runGeneration(document: vscode.TextDocument, style: CommentStyle): Promise<void> {
+  private async runGeneration(document: vscode.TextDocument, style: CommentStyle, useAi = true): Promise<void> {
     const parsed = await this.parser.parse(document);
     const symbols = parsed.symbols.filter(
       s => s.kind === 'function' || s.kind === 'method',
@@ -140,7 +143,9 @@ export class CommentGenerator {
           const slice = this.functionSlice(live, sym.line);
           if (!slice) { skipped++; continue; }
 
-          const comment = await this.generateComment(sym.name, slice, style, live.languageId);
+          const comment = useAi
+            ? await this.generateComment(sym.name, slice, style, live.languageId)
+            : this.structuralComment(sym.name, style);
           if (!comment) { skipped++; continue; }
 
           const indent    = this.indentOf(live, sym.line);
@@ -156,7 +161,7 @@ export class CommentGenerator {
     );
 
     const msg = skipped > 0
-      ? `CodeReach: Added ${added} comment(s). ${skipped} skipped (AI returned empty response).`
+      ? `CodeReach: Added ${added} comment(s). ${skipped} skipped.`
       : `CodeReach: Added ${added} comment(s).`;
     vscode.window.showInformationMessage(msg);
   }
@@ -165,6 +170,22 @@ export class CommentGenerator {
   // precise message — rather than always saying the same thing regardless
   // of whether Ollama is installed, has models, or just needs the server started.
 
+
+  // Build a minimal structural comment from the function name alone —
+  // Build a minimal structural comment from the function name alone —
+  // used when AI is unavailable. Inserts a TODO placeholder so the
+  // developer knows to fill in the description later.
+  private structuralComment(name: string, style: CommentStyle): string {
+    switch (style) {
+      case 'jsdoc':
+      case 'javadoc':
+        return `/**\n * TODO: describe ${name}\n */`;
+      case 'python': {
+        const q = '"""';
+        return `${q}TODO: describe ${name}.${q}`;
+      }
+    }
+  }
 
   private async probeAi(): Promise<boolean> {
     try {

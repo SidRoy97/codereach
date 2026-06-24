@@ -157,8 +157,8 @@ export class UnderstandingGenerator {
     if (!aiReady) {
       const choice = await vscode.window.showWarningMessage(
         'CodeReach: No AI response. ' +
-        'For Ollama: run "ollama serve" in a terminal, then click 📖 Understanding Doc again. ' +
-        'If you have not installed Ollama yet: get it from ollama.com and run "ollama pull llama3.2" first. ' +
+        'For Ollama: run "ollama serve" in a terminal, then click Understanding Doc again. ' +
+        'If you have not installed Ollama yet: get it from ollama.com and run "ollama pull <model>" first. ' +
         'Alternatively, choose "Structure only" to generate the document without AI summaries.',
         'Structure only', 'Cancel',
       );
