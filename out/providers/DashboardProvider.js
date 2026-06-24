@@ -36,15 +36,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
-// Render the sidebar dashboard webview. It shows summary stats,
-// a grouped action toolbar, a category breakdown, and a per-file issue list.
-// Buttons post a message that maps to an existing command via executeCommand —
-// the dashboard holds no feature logic itself, so there is exactly one
-// implementation of each feature.
-//
-// The dashboard can be scoped: "This File" shows only the active file's
-// issues, "Workspace" shows everything. In file scope it follows the active
-// editor, so switching files updates the view.
 class DashboardProvider {
     constructor(store) {
         this.store = store;
@@ -55,11 +46,7 @@ class DashboardProvider {
         this.view = view;
         view.webview.options = { enableScripts: true };
         view.webview.html = this.buildHtml();
-        // Treat every incoming message as untrusted: only a known command id
-        // from our fixed allowlist is ever executed.
         this.disposables.push(view.webview.onDidReceiveMessage(message => this.handleMessage(message)));
-        // When in file scope, follow the active editor so the view always matches
-        // the file the user is looking at.
         this.disposables.push(vscode.window.onDidChangeActiveTextEditor(editor => {
             if (this.scope.kind === 'file' && editor && editor.document.uri.scheme === 'file') {
                 this.scope = { kind: 'file', uri: editor.document.uri.toString() };
@@ -72,8 +59,6 @@ class DashboardProvider {
             this.view.webview.html = this.buildHtml();
         }
     }
-    // Switch the dashboard to show only the active file. Called when the user
-    // runs "This File". If no file is open, fall back to workspace scope.
     scopeToActiveFile() {
         const editor = vscode.window.activeTextEditor
             ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
@@ -85,15 +70,10 @@ class DashboardProvider {
         }
         this.refresh();
     }
-    // Switch the dashboard to show every analyzed file. Called when the user
-    // runs "Workspace".
     scopeToWorkspace() {
         this.scope = { kind: 'workspace' };
         this.refresh();
     }
-    // Map a button message to a real command. The allowlist is the security
-    // boundary — anything not listed is ignored. The two analyze buttons also
-    // set the view scope so the display matches what was just analyzed.
     handleMessage(message) {
         if (!message || typeof message !== 'object')
             return;
@@ -109,10 +89,10 @@ class DashboardProvider {
                 'codereach.generateUnderstanding',
                 'codereach.reportIssues',
                 'codereach.generateConfig',
+                'codereach.taintScan',
+                'codereach.taintScanWorkspace',
             ]);
             if (allowed.has(msg.id)) {
-                // Set scope before running, so the refresh after analysis shows the
-                // right slice.
                 if (msg.id === 'codereach.analyzeFile')
                     this.scopeToActiveFile();
                 if (msg.id === 'codereach.analyzeWorkspace')
@@ -127,9 +107,6 @@ class DashboardProvider {
             vscode.commands.executeCommand('workbench.action.openSettings', 'codereach');
             return;
         }
-        // Flip the precise-relationships setting and re-render so the toggle
-        // reflects the new state. The setting is the single source of truth — the
-        // Understanding Doc reads the same value when it runs.
         if (msg.type === 'togglePrecise') {
             const cfg = vscode.workspace.getConfiguration('codereach');
             const current = cfg.get('preciseRelationships', false);
@@ -149,7 +126,6 @@ class DashboardProvider {
             }
         }
     }
-    // The results currently in scope: one file, or all of them.
     scopedResults() {
         const all = this.store.getAll();
         if (this.scope.kind === 'file') {
@@ -161,12 +137,9 @@ class DashboardProvider {
     buildHtml() {
         const results = this.scopedResults();
         const summary = this.computeSummary(results);
-        // Whether precise (language-server) relationships are enabled, so the
-        // toggle in the Understand Code group reflects the current setting.
         const preciseOn = vscode.workspace
             .getConfiguration('codereach')
             .get('preciseRelationships', false);
-        // A short label describing what the user is looking at.
         const scopeLabel = this.scope.kind === 'file'
             ? `This file: ${path.basename(vscode.Uri.parse(this.scope.uri).fsPath)}`
             : 'Whole workspace';
@@ -207,6 +180,7 @@ class DashboardProvider {
     --info: var(--vscode-editorInfo-foreground, #4af);
     --ok: var(--vscode-gitDecoration-addedResourceForeground, #4c4);
     --purple: #a78bfa;
+    --taint: #f97316;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: var(--vscode-font-family); font-size: 12px; color: var(--fg); padding: 10px; }
@@ -229,6 +203,8 @@ class DashboardProvider {
   .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent); font-weight: 700; }
   .btn.toggle { width: 100%; justify-content: center; margin-top: 5px; }
+  .btn-taint { border-color: var(--taint); color: var(--taint); }
+  .btn-taint:hover { background: var(--taint); color: #fff; border-color: var(--taint); }
   .note { font-size: 9.5px; line-height: 1.5; opacity: 0.7; margin-top: 6px; padding: 6px 8px;
     border-left: 2px solid var(--border); background: rgba(128,128,128,0.06); border-radius: 0 4px 4px 0; }
   .note b { opacity: 0.95; }
@@ -317,6 +293,17 @@ class DashboardProvider {
     ${preciseOn
             ? '🎯 <b>On:</b> the Understanding Doc asks the language server for exact callers/callees (ground truth). More accurate, but slower and it needs the language\'s extension installed and indexed: <b>TypeScript/JavaScript</b> work out of the box; <b>Python</b> needs the <code>ms-python.python</code> extension (Pylance); <b>Java</b> needs <code>redhat.java</code> (Language Support for Java™ by Red Hat, or the Extension Pack for Java). Each language is resolved separately, so calls <i>between</i> languages aren\'t tracked, and trivial delegating methods (e.g. <code>dispose</code>) may merge. Symbols it can\'t resolve fall back to the fast estimate. Only affects the Understanding Doc.'
             : '⚡ <b>Off:</b> the Understanding Doc uses a fast built-in estimate of callers/callees. Instant and works offline, but a few relationships for shared names (like several <code>dispose</code> methods) may be approximate. Turn on for exact results.'}
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Security — Taint Analysis</div>
+  <div class="btn-row">
+    <button class="btn btn-taint" data-cmd="codereach.taintScan"><span class="ic">🔬</span>Taint: This File</button>
+    <button class="btn btn-taint" data-cmd="codereach.taintScanWorkspace"><span class="ic">🕸</span>Taint: Workspace</button>
+  </div>
+  <div class="note">
+    🔬 <b>Taint Scan</b> traces untrusted input (req.body, getParameter, e.target.value) to dangerous sinks (innerHTML, eval, db.query, exec) without a sanitizer in between. <b>This File</b> = fast intra-file. <b>Workspace</b> = cross-file via the code graph (Phase 2).
   </div>
 </div>
 

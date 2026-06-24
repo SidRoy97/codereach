@@ -48,7 +48,7 @@ export class CrossFileTaintScanner {
   private readonly phase1: TaintScanner;
 
   constructor(
-    private readonly parser: LanguageParser,
+    parser: LanguageParser,
     private readonly getGraph: () => CodeGraph,
   ) {
     this.phase1 = new TaintScanner(parser);

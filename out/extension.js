@@ -45,6 +45,7 @@ const ComplexityScanner_1 = require("./scanners/ComplexityScanner");
 const DuplicateScanner_1 = require("./scanners/DuplicateScanner");
 const AiScanner_1 = require("./scanners/AiScanner");
 const TaintScanner_1 = require("./scanners/TaintScanner");
+const CrossFileTaintScanner_1 = require("./scanners/CrossFileTaintScanner");
 const AnalysisOrchestrator_1 = require("./AnalysisOrchestrator");
 // UI publishers
 const DiagnosticsPublisher_1 = require("./publishers/DiagnosticsPublisher");
@@ -68,16 +69,11 @@ const SafetyChecker_1 = require("./graph/SafetyChecker");
 const ProblemsReporter_1 = require("./reports/ProblemsReporter");
 const UnderstandingGenerator_1 = require("./reports/UnderstandingGenerator");
 const ListPanel_1 = require("./graph/ListPanel");
-// Languages CodeReach analyzes and graphs.
 const SUPPORTED_LANGUAGES = [
     'javascript', 'javascriptreact',
     'typescript', 'typescriptreact',
     'python', 'java',
 ];
-// Files CodeReach writes to the workspace root. Opening them triggers
-// onDidChangeActiveTextEditor — we skip the graph traversal for these so
-// we don't spike CPU right after the Understanding Doc or Problems Report
-// is generated.
 const CODEREACH_OUTPUT_FILES = new Set([
     'codereach.json',
     'codereach-understanding.json',
@@ -111,7 +107,6 @@ function activateInternal(context) {
     const diagPub = new DiagnosticsPublisher_1.DiagnosticsPublisher();
     const statusBar = new StatusBarManager_1.StatusBarManager(store);
     const dashboard = new DashboardProvider_1.DashboardProvider(store);
-    // After every analysis: update squiggles, status bar, dashboard.
     const onComplete = (result) => {
         try {
             diagPub.present(result);
@@ -139,23 +134,23 @@ function activateInternal(context) {
     const graphBuilder = new CodeGraphBuilder_1.CodeGraphBuilder(parser);
     const graphPanel = new GraphPanel_1.GraphPanel(context.extensionUri, () => graphBuilder.getGraph());
     const codeLens = new ImpactCodeLens_1.ImpactCodeLens(() => graphBuilder.getGraph());
-    // --- Impact intelligence features (all graph-backed, no AI needed) ---
+    // --- Impact intelligence features ---
     const getRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const symbolLocator = new SymbolLocator_1.SymbolLocator(() => graphBuilder.getGraph());
     const liveImpactBar = new LiveImpactBar_1.LiveImpactBar(() => graphBuilder.getGraph(), getRoot);
     const flowTracer = new FlowTracer_1.FlowTracer(() => graphBuilder.getGraph());
     const safetyChecker = new SafetyChecker_1.SafetyChecker(() => graphBuilder.getGraph());
-    // --- Context / AI assist (now graph-backed) ---
+    // --- Context / AI assist ---
     const summarizer = new FileSummarizer_1.FileSummarizer(ai, context);
-    // Problems report writer (reads ResultStore, names functions via the graph)
     const problemsReporter = new ProblemsReporter_1.ProblemsReporter(store, () => graphBuilder.getGraph());
-    // One reusable list panel for Build Graph / Find Unused / Blast Radius / Taint.
     const listPanel = new ListPanel_1.ListPanel(context.extensionUri);
-    // Structured project-understanding document generator.
     const understanding = new UnderstandingGenerator_1.UnderstandingGenerator(() => graphBuilder.getGraph(), summarizer, ai);
-    // On-demand intra-file taint scanner (Phase 1 — source-to-sink within one file).
+    // --- Taint scanners ---
+    // Phase 1: intra-file, on-demand.
     const taintScanner = new TaintScanner_1.TaintScanner(parser);
-    // Blast-radius status bar item (now computed from the graph).
+    // Phase 2: cross-file via the code graph, on-demand.
+    const crossFileTaint = new CrossFileTaintScanner_1.CrossFileTaintScanner(parser, () => graphBuilder.getGraph());
+    // Blast-radius status bar item.
     const blastBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
     blastBar.command = 'codereach.showBlastRadius';
     blastBar.tooltip = 'Click to see what depends on this file';
@@ -178,7 +173,7 @@ function activateInternal(context) {
             console.error('CodeReach analysis error', e);
         }
     };
-    // --- Helper: update the blast-radius bar from the graph ---
+    // --- Helper: update the blast-radius bar ---
     const updateBlastBar = (document) => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root || document.uri.scheme !== 'file') {
@@ -259,10 +254,7 @@ function activateInternal(context) {
     context.subscriptions.push(vscode.commands.registerCommand('codereach.generateConfig', () => {
         generateProjectConfig();
     }));
-    // --- Code graph (internal) ---
-    // The graph is built on activation. This helper rebuilds it on demand if it
-    // is somehow empty, so the features that read it (Blast Radius, Find Unused,
-    // Understanding Doc) always have data without a user-facing "build" step.
+    // --- Code graph ---
     const ensureGraph = async () => {
         if (graphBuilder.getGraph().nodes.length === 0) {
             await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'CodeReach: Building code graph…' }, async () => {
@@ -279,11 +271,9 @@ function activateInternal(context) {
             await vscode.window.showTextDocument(doc);
         }
     }));
-    // Opened by the CodeLens above each function.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.showImpact', (nodeId) => {
         graphPanel.show(nodeId);
     }));
-    // Write a project-wide problems report (markdown + json).
     context.subscriptions.push(vscode.commands.registerCommand('codereach.reportIssues', async () => {
         try {
             await problemsReporter.generate();
@@ -292,11 +282,7 @@ function activateInternal(context) {
             vscode.window.showErrorMessage(`CodeReach: Report failed — ${e}`);
         }
     }));
-    // Show which files depend on the active file, as a clickable list.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.showBlastRadius', async () => {
-        // When this runs from a dashboard button, the webview holds focus and
-        // activeTextEditor is undefined, so I fall back to the first visible
-        // file editor before giving up.
         const editor = vscode.window.activeTextEditor
             ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
         if (!editor) {
@@ -309,9 +295,7 @@ function activateInternal(context) {
         await ensureGraph();
         const relFile = path.relative(root, editor.document.uri.fsPath);
         const graph = graphBuilder.getGraph();
-        // Symbols defined in this file.
         const ownIds = new Set(graph.nodes.filter(n => n.file === relFile).map(n => n.id));
-        // Symbols in other files that call into this file's symbols.
         const dependents = graph.nodes.filter(node => {
             if (node.file === relFile)
                 return false;
@@ -332,9 +316,6 @@ function activateInternal(context) {
             rows,
         });
     }));
-    // List symbols that nothing calls — possible dead code. Each row opens
-    // the symbol. Entry points and dynamic calls may be false positives, so
-    // this is framed as "review", not "delete".
     context.subscriptions.push(vscode.commands.registerCommand('codereach.findUnused', async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) {
@@ -359,7 +340,6 @@ function activateInternal(context) {
         });
     }));
     // --- Impact intelligence commands ---
-    // I find the symbol the cursor is in, building the graph first if needed.
     const symbolUnderCursor = async () => {
         const editor = vscode.window.activeTextEditor;
         const root = getRoot();
@@ -376,13 +356,11 @@ function activateInternal(context) {
         }
         return { id: node.id, name: node.name };
     };
-    // Feature 1 click target: open the impact graph for the cursor's symbol.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.showImpactForCursor', async () => {
         const sym = await symbolUnderCursor();
         if (sym)
             graphPanel.show(sym.id);
     }));
-    // Feature 2: trace the flow downward from the cursor's symbol.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.traceFlow', async () => {
         const sym = await symbolUnderCursor();
         if (!sym)
@@ -396,7 +374,6 @@ function activateInternal(context) {
             rows,
         });
     }));
-    // Feature 3: safety check — what breaks if the cursor's symbol changes.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.safetyCheck', async () => {
         const sym = await symbolUnderCursor();
         if (!sym)
@@ -420,11 +397,8 @@ function activateInternal(context) {
             vscode.window.showErrorMessage(`CodeReach: Understanding doc failed — ${e}`);
         }
     }));
-    // On-demand taint scan for the active file — finds source-to-sink data flows
-    // (e.g. req.body reaching innerHTML without sanitization). Runs the
-    // intra-file Phase 1 engine and shows results in the ListPanel.
-    // Kept separate from the save-triggered pipeline because AST taint walking
-    // is heavier than regex rules and should be an explicit developer action.
+    // --- Taint scan commands ---
+    // Phase 1: intra-file on-demand taint scan.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.taintScan', async () => {
         const editor = vscode.window.activeTextEditor
             ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
@@ -461,6 +435,52 @@ function activateInternal(context) {
             });
         });
     }));
+    // Phase 2: cross-file workspace taint scan using the code graph.
+    context.subscriptions.push(vscode.commands.registerCommand('codereach.taintScanWorkspace', async () => {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'CodeReach: Cross-file taint scan…',
+            cancellable: true,
+        }, async (progress, token) => {
+            // Ensure the graph is built before scanning — Phase 2 needs edges.
+            await ensureGraph();
+            let flows;
+            try {
+                flows = await crossFileTaint.scanWorkspace(progress, token);
+            }
+            catch (e) {
+                vscode.window.showErrorMessage(`CodeReach: Cross-file taint scan failed — ${e}`);
+                return;
+            }
+            if (token.isCancellationRequested)
+                return;
+            const rows = flows.map(flow => ({
+                label: flow.issue.message,
+                detail: `${flow.sinkFile}:${flow.issue.line + 1}  ·  ${flow.chain.join(' → ')}`,
+                file: flow.sinkFile,
+                line: flow.issue.line,
+                tone: 'danger',
+                badge: flow.chain.length > 1 ? 'cross-file' : 'intra-file',
+            }));
+            // Sort cross-file flows first — they are the novel Phase 2 findings.
+            rows.sort((a, b) => {
+                if (a.badge === 'cross-file' && b.badge !== 'cross-file')
+                    return -1;
+                if (b.badge === 'cross-file' && a.badge !== 'cross-file')
+                    return 1;
+                return 0;
+            });
+            const crossFileCount = rows.filter(r => r.badge === 'cross-file').length;
+            const intraCount = rows.filter(r => r.badge === 'intra-file').length;
+            listPanel.show({
+                title: 'Cross-File Taint Scan',
+                intro: rows.length === 0
+                    ? 'No taint flows found across the workspace.'
+                    : `${rows.length} flow(s) found: ${crossFileCount} cross-file, ${intraCount} intra-file. Click a row to jump to the sink.`,
+                rows,
+            });
+        });
+    }));
     // --- Event listeners ---
     context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
         if (config.shouldAnalyzeOnSave())
@@ -480,9 +500,6 @@ function activateInternal(context) {
             liveImpactBar.update(undefined);
             return;
         }
-        // Skip CodeReach's own output files — opening them would trigger a full
-        // graph traversal for no reason, causing a CPU spike after the
-        // Understanding Doc or Problems Report is generated.
         if (isCoderReachOutput(editor.document.uri.fsPath)) {
             blastBar.hide();
             return;
@@ -491,7 +508,6 @@ function activateInternal(context) {
         updateBlastBar(editor.document);
         liveImpactBar.update(editor);
     }));
-    // Update the live impact bar as the cursor moves between symbols.
     context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(e => {
         liveImpactBar.update(e.textEditor);
     }));
@@ -508,7 +524,6 @@ function activateInternal(context) {
         dashboard.refresh();
     }));
     // --- Startup ---
-    // Analyze already-open files shortly after load.
     setTimeout(() => {
         for (const editor of vscode.window.visibleTextEditors) {
             analyzeDocument(editor.document).catch(() => { });
@@ -517,8 +532,6 @@ function activateInternal(context) {
         if (active)
             updateBlastBar(active.document);
     }, 200);
-    // Build the code graph in the background, then refresh the CodeLens
-    // and the blast bar so they show real numbers.
     setTimeout(() => {
         graphBuilder.build()
             .then(() => {
@@ -535,7 +548,6 @@ function activateInternal(context) {
 function deactivate() {
     console.log('CodeReach: deactivated');
 }
-// Map VS Code language ids to file extensions for workspace scan globs.
 function langToExts(lang) {
     const map = {
         javascript: ['js', 'mjs'],
@@ -547,7 +559,6 @@ function langToExts(lang) {
     };
     return map[lang] ?? [lang];
 }
-// Write a starter .codereach.json to the workspace root.
 async function generateProjectConfig() {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) {
