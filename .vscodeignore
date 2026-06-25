@@ -1,7 +1,6 @@
 src/**
 tsconfig.json
 .vscode/**
-node_modules/**
 .git/**
 .gitignore
 **/*.test.ts
@@ -11,6 +10,8 @@ node_modules/**
 CHANGELOG.md
 CONTRIBUTING.md
 **/*.map
-tree-sitter-*/**
-*.grammar.js
 screenshots/**
+codereach*.json
+codereach*.md
+index.html
+.codescape.json
