@@ -37,9 +37,11 @@ exports.DashboardProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 class DashboardProvider {
-    constructor(store) {
+    constructor(store, triggerAnalysis) {
         this.store = store;
-        this.scope = { kind: 'workspace' };
+        this.triggerAnalysis = triggerAnalysis;
+        this.scope = { kind: 'idle' };
+        this.analysisAttempted = false;
         this.disposables = [];
     }
     resolveWebviewView(view) {
@@ -47,6 +49,30 @@ class DashboardProvider {
         view.webview.options = { enableScripts: true };
         view.webview.html = this.buildHtml();
         this.disposables.push(view.webview.onDidReceiveMessage(message => this.handleMessage(message)));
+        // When the dashboard becomes visible:
+        // - If the store already has results, just refresh.
+        // - If empty, trigger a silent background analysis so the user
+        //   never sees 0 issues on first open.
+        // The 500ms delay gives the extension host time to fully activate
+        // before we start opening documents.
+        this.disposables.push(view.onDidChangeVisibility(() => {
+            if (!view.visible)
+                return;
+            if (this.store.getAll().length > 0) {
+                this.refresh();
+            }
+            else {
+                setTimeout(() => {
+                    if (this.store.getAll().length === 0) {
+                        this.analysisAttempted = true;
+                        this.triggerAnalysis();
+                    }
+                    else {
+                        this.refresh();
+                    }
+                }, 500);
+            }
+        }));
         this.disposables.push(vscode.window.onDidChangeActiveTextEditor(editor => {
             if (this.scope.kind === 'file' && editor && editor.document.uri.scheme === 'file') {
                 this.scope = { kind: 'file', uri: editor.document.uri.toString() };
@@ -89,9 +115,9 @@ class DashboardProvider {
                 'codereach.generateUnderstanding',
                 'codereach.reportIssues',
                 'codereach.generateConfig',
-                'codereach.taintScan',
                 'codereach.taintScanWorkspace',
                 'codereach.generateComments',
+                'codereach.generateCommentsWorkspace',
             ]);
             if (allowed.has(msg.id)) {
                 if (msg.id === 'codereach.analyzeFile')
@@ -99,7 +125,7 @@ class DashboardProvider {
                 if (msg.id === 'codereach.analyzeWorkspace')
                     this.scopeToWorkspace();
                 if (msg.id === 'codereach.clearIssues')
-                    this.scope = { kind: 'workspace' };
+                    this.scope = { kind: 'idle' };
                 vscode.commands.executeCommand(msg.id);
             }
             return;
@@ -143,7 +169,9 @@ class DashboardProvider {
             .get('preciseRelationships', false);
         const scopeLabel = this.scope.kind === 'file'
             ? `This file: ${path.basename(vscode.Uri.parse(this.scope.uri).fsPath)}`
-            : 'Whole workspace';
+            : this.scope.kind === 'workspace'
+                ? 'Whole workspace'
+                : 'Not yet analyzed';
         const fileCards = results
             .filter(r => r.issues.length > 0)
             .sort((a, b) => b.issues.length - a.issues.length)
@@ -163,6 +191,7 @@ class DashboardProvider {
       `).join('');
         const hasIssues = summary.totalIssues > 0;
         const fileScopeActive = this.scope.kind === 'file';
+        const workspaceScopeActive = this.scope.kind === 'workspace';
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -275,7 +304,7 @@ class DashboardProvider {
   <div class="group-title">Analyze</div>
   <div class="btn-row">
     <button class="btn ${fileScopeActive ? 'btn-primary' : ''}" data-cmd="codereach.analyzeFile"><span class="ic">⚡</span>This File</button>
-    <button class="btn ${!fileScopeActive ? 'btn-primary' : ''}" data-cmd="codereach.analyzeWorkspace"><span class="ic">📂</span>Workspace</button>
+    <button class="btn ${workspaceScopeActive ? 'btn-primary' : ''}" data-cmd="codereach.analyzeWorkspace"><span class="ic">📂</span>Workspace</button>
     <button class="btn" data-cmd="codereach.clearIssues"><span class="ic">🗑</span>Clear</button>
   </div>
 </div>
@@ -286,7 +315,8 @@ class DashboardProvider {
     <button class="btn" data-cmd="codereach.generateUnderstanding"><span class="ic">📖</span>Understanding Doc</button>
     <button class="btn" data-cmd="codereach.showBlastRadius"><span class="ic">💥</span>Blast Radius</button>
     <button class="btn" data-cmd="codereach.findUnused"><span class="ic">🔍</span>Unused</button>
-    <button class="btn" data-cmd="codereach.generateComments"><span class="ic">✍️</span>Auto-Comment</button>
+    <button class="btn" data-cmd="codereach.generateComments">Auto-Comment: This File</button>
+    <button class="btn" data-cmd="codereach.generateCommentsWorkspace">Auto-Comment: Workspace</button>
   </div>
   <button class="btn toggle ${preciseOn ? 'active' : ''}" data-precise="1" title="When on, the Understanding Doc resolves relationships from the language server (ground truth) instead of the fast heuristic. Slower; needs the language extension installed.">
     <span class="ic">${preciseOn ? '🎯' : '⚡'}</span>Precise relationships: ${preciseOn ? 'On' : 'Off'}
@@ -301,11 +331,10 @@ class DashboardProvider {
 <div class="group">
   <div class="group-title">Security — Taint Analysis</div>
   <div class="btn-row">
-    <button class="btn btn-taint" data-cmd="codereach.taintScan"><span class="ic">🔬</span>Taint: This File</button>
-    <button class="btn btn-taint" data-cmd="codereach.taintScanWorkspace"><span class="ic">🕸</span>Taint: Workspace</button>
+    <button class="btn btn-taint" data-cmd="codereach.taintScanWorkspace">Taint Scan</button>
   </div>
   <div class="note">
-    🔬 <b>Taint Scan</b> follows untrusted user input — from form fields, HTTP parameters, and CLI args — through your code to dangerous operations like database queries, shell commands, and HTML output. It flags flows where that input reaches a sink without being sanitized first. <b>This File</b> checks one file instantly. <b>Workspace</b> follows the data across files using your code graph, catching flows that span multiple functions and modules.
+    🔬 <b>Taint Scan</b> follows untrusted user input — from HTTP parameters, form fields, CLI args, and environment variables — through your code to dangerous operations like database queries, shell commands, and HTML output. It flags every path where that input reaches a sink without being sanitized, across all files in the workspace.
   </div>
 </div>
 
@@ -337,7 +366,7 @@ ${fileCards}
 <div class="empty">
   <div class="empty-icon">✅</div>
   <div>${this.scope.kind === 'file' ? 'No issues in this file.' : 'No issues found yet.'}</div>
-  <div style="margin-top:7px;font-size:10px">Click "This File" or "Workspace" to analyze.</div>
+  <div style="margin-top:7px;font-size:10px">${this.scope.kind === 'file' ? '' : 'Click \"This File\" or \"Workspace\" to analyze.'}</div>
 </div>
 `}
 

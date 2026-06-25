@@ -44,7 +44,6 @@ const StaticScanner_1 = require("./scanners/StaticScanner");
 const ComplexityScanner_1 = require("./scanners/ComplexityScanner");
 const DuplicateScanner_1 = require("./scanners/DuplicateScanner");
 const AiScanner_1 = require("./scanners/AiScanner");
-const TaintScanner_1 = require("./scanners/TaintScanner");
 const CrossFileTaintScanner_1 = require("./scanners/CrossFileTaintScanner");
 const CommentGenerator_1 = require("./reports/CommentGenerator");
 const AnalysisOrchestrator_1 = require("./AnalysisOrchestrator");
@@ -107,7 +106,7 @@ function activateInternal(context) {
     const ai = new AiScanner_1.AiScanner(config);
     const diagPub = new DiagnosticsPublisher_1.DiagnosticsPublisher();
     const statusBar = new StatusBarManager_1.StatusBarManager(store);
-    const dashboard = new DashboardProvider_1.DashboardProvider(store);
+    const dashboard = new DashboardProvider_1.DashboardProvider(store, () => { runBackgroundAnalysis(); });
     const onComplete = (result) => {
         try {
             diagPub.present(result);
@@ -148,9 +147,8 @@ function activateInternal(context) {
     const understanding = new UnderstandingGenerator_1.UnderstandingGenerator(() => graphBuilder.getGraph(), summarizer, ai);
     // --- Taint scanners ---
     // Phase 1: intra-file, on-demand.
-    const taintScanner = new TaintScanner_1.TaintScanner(parser);
     // Phase 2: cross-file via the code graph, on-demand.
-    const crossFileTaint = new CrossFileTaintScanner_1.CrossFileTaintScanner(parser, () => graphBuilder.getGraph());
+    const crossFileTaint = new CrossFileTaintScanner_1.CrossFileTaintScanner(parser, () => graphBuilder.getGraph(), graphBuilder);
     // Auto-comment generator — inserts JSDoc/docstrings above uncommented functions.
     const commentGenerator = new CommentGenerator_1.CommentGenerator(parser, ai);
     // Blast-radius status bar item.
@@ -164,16 +162,63 @@ function activateInternal(context) {
     context.subscriptions.push(vscode.languages.registerCodeActionsProvider(languageSelector, codeActions, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix, vscode.CodeActionKind.Empty] }));
     context.subscriptions.push(vscode.languages.registerCodeLensProvider(languageSelector, codeLens));
     // --- Helper: analyze a document if it is a supported file ---
+    // Patterns for third-party files that should never be analyzed.
+    const SKIP_ANALYSIS = [
+        /[\/\\]static[\/\\]/,
+        /[\/\\]vendor[\/\\]/,
+        /[\/\\]assets[\/\\]/,
+        /[\/\\]node_modules[\/\\]/,
+        /[\/\\]target[\/\\]/,
+        /[\/\\]__pycache__[\/\\]/,
+        /[\/\\]venv[\/\\]/,
+        /[\/\\]\.venv[\/\\]/,
+        /[\/\\]env[\/\\]/,
+        /[\/\\]migrations[\/\\]/,
+        /[\/\\]generated[\/\\]/,
+        /[\/\\]\.next[\/\\]/,
+        /[\/\\]\.nuxt[\/\\]/,
+        /[\/\\]coverage[\/\\]/,
+        /[\/\\]__generated__[\/\\]/,
+        /\.min\.[jt]s$/,
+        /\.bundle\.[jt]s$/,
+        /\.chunk\.[jt]s$/,
+        /\.pyc$/,
+    ];
     const analyzeDocument = async (document, debounceMs = 0) => {
         if (document.uri.scheme !== 'file')
             return;
         if (!SUPPORTED_LANGUAGES.includes(document.languageId))
+            return;
+        if (SKIP_ANALYSIS.some(p => p.test(document.uri.fsPath)))
             return;
         try {
             await orchestrator.analyze(document, debounceMs);
         }
         catch (e) {
             console.error('CodeReach analysis error', e);
+        }
+    };
+    // Background workspace analysis — runs silently, no progress notification.
+    // Called on startup after the graph builds, and when the dashboard first
+    // opens with an empty store so the user never sees stale 0 issues.
+    const runBackgroundAnalysis = async () => {
+        try {
+            const exts = config.getLanguages().flatMap(langToExts).join(',');
+            const uris = await vscode.workspace.findFiles(`**/*.{${exts}}`, '{**/node_modules/**,**/dist/**,**/out/**,**/static/**,**/vendor/**,**/assets/**,**/__pycache__/**,**/venv/**,**/.venv/**,**/env/**,**/migrations/**,**/generated/**,**/target/**,**/.next/**,**/coverage/**,**/*.min.js,**/*.bundle.js,**/*.chunk.js}');
+            console.log(`CodeReach: background analysis — found ${uris.length} files`);
+            for (const uri of uris) {
+                try {
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    await analyzeDocument(doc);
+                }
+                catch { /* skip unreadable */ }
+            }
+            console.log(`CodeReach: background analysis done — ${store.getAll().length} files in store`);
+            dashboard.refresh();
+            statusBar.render();
+        }
+        catch (e) {
+            console.error('CodeReach: background analysis error', e);
         }
     };
     // --- Helper: update the blast-radius bar ---
@@ -224,7 +269,7 @@ function activateInternal(context) {
     }));
     context.subscriptions.push(vscode.commands.registerCommand('codereach.analyzeWorkspace', async () => {
         const exts = config.getLanguages().flatMap(langToExts).join(',');
-        const uris = await vscode.workspace.findFiles(`**/*.{${exts}}`, '{**/node_modules/**,**/dist/**,**/out/**}');
+        const uris = await vscode.workspace.findFiles(`**/*.{${exts}}`, '{**/node_modules/**,**/dist/**,**/out/**,**/build/**,**/target/**,**/static/**,**/vendor/**,**/assets/**,**/__pycache__/**,**/venv/**,**/.venv/**,**/env/**,**/migrations/**,**/generated/**,**/generated-sources/**,**/.next/**,**/.nuxt/**,**/coverage/**,**/__generated__/**,**/*.min.js,**/*.bundle.js,**/*.chunk.js,**/*.pyc}');
         if (!uris.length) {
             vscode.window.showWarningMessage('CodeReach: No supported files found.');
             return;
@@ -415,44 +460,36 @@ function activateInternal(context) {
             vscode.window.showErrorMessage(`CodeReach: Comment generation failed — ${e}`);
         }
     }));
-    // --- Taint scan commands ---
-    // Phase 1: intra-file on-demand taint scan.
-    context.subscriptions.push(vscode.commands.registerCommand('codereach.taintScan', async () => {
-        const editor = vscode.window.activeTextEditor
-            ?? vscode.window.visibleTextEditors.find(e => e.document.uri.scheme === 'file');
-        if (!editor) {
-            vscode.window.showWarningMessage('CodeReach: Open a file first.');
-            return;
+    // Auto-comment: workspace mode — generate comments for all files.
+    // Auto-comment: workspace — generate comments for every supported file.
+    context.subscriptions.push(vscode.commands.registerCommand('codereach.generateCommentsWorkspace', async () => {
+        // Probe AI first so we can offer the no-AI fallback before iterating
+        // over every file in the workspace.
+        const aiReady = await commentGenerator.probeAi();
+        let useAi = true;
+        if (!aiReady) {
+            const choice = await vscode.window.showWarningMessage('CodeReach: No AI response. ' +
+                'For Ollama: run "ollama serve" in a terminal, then click Auto-Comment: Workspace again. ' +
+                'If you have not installed Ollama yet: get it from ollama.com and run "ollama pull <model>" first. ' +
+                'You can also switch to a cloud provider in Settings → codereach.aiProvider.', 'Comment without AI', 'Cancel');
+            if (!choice || choice === 'Cancel')
+                return;
+            useAi = false;
         }
-        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'CodeReach: Running taint scan…' }, async () => {
-            let issues;
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'CodeReach: Generating comments across workspace…',
+            cancellable: true,
+        }, async (progress, token) => {
             try {
-                issues = await taintScanner.scan(editor.document);
+                await commentGenerator.generateForWorkspace(progress, token, useAi);
             }
             catch (e) {
-                vscode.window.showErrorMessage(`CodeReach: Taint scan failed — ${e}`);
-                return;
+                vscode.window.showErrorMessage(`CodeReach: Comment generation failed — ${e}`);
             }
-            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            const relFile = root
-                ? path.relative(root, editor.document.uri.fsPath)
-                : editor.document.uri.fsPath;
-            const rows = issues.map(issue => ({
-                label: issue.message,
-                detail: `${relFile}:${issue.line + 1}  —  ${issue.suggestion ?? ''}`,
-                file: relFile,
-                line: issue.line,
-                tone: 'danger',
-            }));
-            listPanel.show({
-                title: `Taint Scan — ${path.basename(editor.document.uri.fsPath)}`,
-                intro: rows.length === 0
-                    ? 'No source-to-sink flows found in this file.'
-                    : `${rows.length} taint flow(s) found. Click a row to jump to the sink line.`,
-                rows,
-            });
         });
     }));
+    // --- Taint scan commands ---
     // Phase 2: cross-file workspace taint scan using the code graph.
     context.subscriptions.push(vscode.commands.registerCommand('codereach.taintScanWorkspace', async () => {
         await vscode.window.withProgress({
@@ -460,8 +497,6 @@ function activateInternal(context) {
             title: 'CodeReach: Cross-file taint scan…',
             cancellable: true,
         }, async (progress, token) => {
-            // Ensure the graph is built before scanning — Phase 2 needs edges.
-            await ensureGraph();
             let flows;
             try {
                 flows = await crossFileTaint.scanWorkspace(progress, token);
@@ -558,6 +593,8 @@ function activateInternal(context) {
             if (active)
                 updateBlastBar(active.document);
             liveImpactBar.update(active);
+            // If the dashboard is already open and still showing 0, trigger analysis.
+            runBackgroundAnalysis();
         })
             .catch(() => { });
     }, 2500);
