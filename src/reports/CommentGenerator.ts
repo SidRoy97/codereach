@@ -13,6 +13,15 @@ const STYLE_FOR_LANG: Record<string, CommentStyle> = {
   java:            'javadoc',
 };
 
+const EXT_MAP: Record<string, string[]> = {
+  javascript:      ['js', 'mjs'],
+  javascriptreact: ['jsx'],
+  typescript:      ['ts'],
+  typescriptreact: ['tsx'],
+  python:          ['py'],
+  java:            ['java'],
+};
+
 const SYSTEM_PROMPTS: Record<CommentStyle, string> = {
   jsdoc:
 `Write a JSDoc comment for the given JavaScript/TypeScript function.
@@ -63,7 +72,8 @@ export class CommentGenerator {
     private readonly ai: AiScanner,
   ) {}
 
-  // Public entry point — probe AI first, handle setup if needed, then generate.
+  // ── Single file ────────────────────────────────────────────────────────────
+
   async generateForFile(document: vscode.TextDocument): Promise<void> {
     const style = STYLE_FOR_LANG[document.languageId];
     if (!style) {
@@ -83,111 +93,120 @@ export class CommentGenerator {
         'Comment without AI', 'Cancel',
       );
       if (choice !== 'Comment without AI') return;
-      // Fall through to generate structural comments without AI.
-      await this.runGeneration(document, style, false);
+      await this.runGenerationCounted(document, style, false);
       return;
     }
 
-    await this.runGeneration(document, style, true);
+    await this.runGenerationCounted(document, style, true);
   }
 
-  // Core generation logic — separated so it can be called after Ollama starts.
-  private async runGeneration(document: vscode.TextDocument, style: CommentStyle, useAi = true): Promise<void> {
-    const parsed = await this.parser.parse(document);
+  // ── Workspace ──────────────────────────────────────────────────────────────
+
+  async generateForWorkspace(
+    progress: vscode.Progress<{ message?: string; increment?: number }>,
+    token:    vscode.CancellationToken,
+    useAi:   boolean,
+  ): Promise<void> {
+    const unique = [...new Set(Object.values(EXT_MAP).flat())];
+    const uris   = await vscode.workspace.findFiles(
+      `**/*.{${unique.join(',')}}`,
+      '{**/node_modules/**,**/dist/**,**/out/**,**/static/**,**/vendor/**,**/*.min.js}',
+    );
+
+    if (!uris.length) {
+      vscode.window.showWarningMessage('CodeReach: No supported files found in workspace.');
+      return;
+    }
+
+    let totalAdded   = 0;
+    let totalSkipped = 0;
+
+    for (let i = 0; i < uris.length; i++) {
+      if (token.isCancellationRequested) break;
+
+      const uri = uris[i];
+      progress.report({
+        message:   `${i + 1}/${uris.length} — ${vscode.workspace.asRelativePath(uri)}`,
+        increment: (1 / uris.length) * 100,
+      });
+
+      let doc: vscode.TextDocument;
+      try {
+        doc = await vscode.workspace.openTextDocument(uri);
+      } catch {
+        continue;
+      }
+
+      const style = STYLE_FOR_LANG[doc.languageId];
+      if (!style) continue;
+
+      const { added, skipped } = await this.runGenerationCounted(doc, style, useAi);
+      totalAdded   += added;
+      totalSkipped += skipped;
+    }
+
+    const msg = totalSkipped > 0
+      ? `CodeReach: Added ${totalAdded} comment(s) across workspace. ${totalSkipped} skipped.`
+      : `CodeReach: Added ${totalAdded} comment(s) across workspace.`;
+    vscode.window.showInformationMessage(msg);
+  }
+
+  // ── Core logic ─────────────────────────────────────────────────────────────
+
+  private async runGenerationCounted(
+    document: vscode.TextDocument,
+    style:    CommentStyle,
+    useAi:    boolean,
+  ): Promise<{ added: number; skipped: number }> {
+    const parsed  = await this.parser.parse(document);
     const symbols = parsed.symbols.filter(
       s => s.kind === 'function' || s.kind === 'method',
     );
 
-    if (symbols.length === 0) {
-      vscode.window.showInformationMessage('CodeReach: No functions found in this file.');
-      return;
-    }
+    if (symbols.length === 0) return { added: 0, skipped: 0 };
 
     const uncommented = symbols.filter(
       s => !this.hasCommentAbove(document, s.line, style),
     );
 
-    if (uncommented.length === 0) {
-      vscode.window.showInformationMessage(
-        'CodeReach: All functions in this file already have comments.',
-      );
-      return;
-    }
+    if (uncommented.length === 0) return { added: 0, skipped: 0 };
 
-    let added = 0;
+    let added   = 0;
     let skipped = 0;
 
-    await vscode.window.withProgress(
-      {
-        location:    vscode.ProgressLocation.Notification,
-        title:       'CodeReach: Generating comments…',
-        cancellable: true,
-      },
-      async (progress, token) => {
-        // Bottom-to-top so insertions don't shift line numbers of earlier functions.
-        const sorted = [...uncommented].sort((a, b) => b.line - a.line);
+    // Bottom-to-top so prior insertions don't shift line numbers of later functions.
+    const sorted = [...uncommented].sort((a, b) => b.line - a.line);
 
-        for (let i = 0; i < sorted.length; i++) {
-          if (token.isCancellationRequested) break;
+    for (const sym of sorted) {
+      const live = vscode.workspace.textDocuments.find(
+        d => d.uri.toString() === document.uri.toString(),
+      ) ?? document;
 
-          const sym = sorted[i];
-          progress.report({
-            message:   `${i + 1}/${sorted.length} — ${sym.name}`,
-            increment: (1 / sorted.length) * 100,
-          });
+      const slice = this.functionSlice(live, sym.line);
+      if (!slice) { skipped++; continue; }
 
-          const live = vscode.workspace.textDocuments.find(
-            d => d.uri.toString() === document.uri.toString(),
-          ) ?? document;
+      const comment = useAi
+        ? await this.generateComment(sym.name, slice, style, live.languageId)
+        : this.structuralComment(sym.name, style);
 
-          const slice = this.functionSlice(live, sym.line);
-          if (!slice) { skipped++; continue; }
+      if (!comment) { skipped++; continue; }
 
-          const comment = useAi
-            ? await this.generateComment(sym.name, slice, style, live.languageId)
-            : this.structuralComment(sym.name, style);
-          if (!comment) { skipped++; continue; }
+      const indent    = this.indentOf(live, sym.line);
+      const indented  = this.indentComment(comment, indent);
+      const insertPos = new vscode.Position(sym.line, 0);
 
-          const indent    = this.indentOf(live, sym.line);
-          const indented  = this.indentComment(comment, indent);
-          const insertPos = new vscode.Position(sym.line, 0);
-
-          const edit = new vscode.WorkspaceEdit();
-          edit.insert(live.uri, insertPos, indented + '\n');
-          await vscode.workspace.applyEdit(edit);
-          added++;
-        }
-      },
-    );
-
-    const msg = skipped > 0
-      ? `CodeReach: Added ${added} comment(s). ${skipped} skipped.`
-      : `CodeReach: Added ${added} comment(s).`;
-    vscode.window.showInformationMessage(msg);
-  }
-
-  // Detect the state of the local Ollama installation so we can show a
-  // precise message — rather than always saying the same thing regardless
-  // of whether Ollama is installed, has models, or just needs the server started.
-
-
-  // Build a minimal structural comment from the function name alone —
-  // Build a minimal structural comment from the function name alone —
-  // used when AI is unavailable. Inserts a TODO placeholder so the
-  // developer knows to fill in the description later.
-  private structuralComment(name: string, style: CommentStyle): string {
-    switch (style) {
-      case 'jsdoc':
-      case 'javadoc':
-        return `/**\n * TODO: describe ${name}\n */`;
-      case 'python': {
-        const q = '"""';
-        return `${q}TODO: describe ${name}.${q}`;
-      }
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(live.uri, insertPos, indented + '\n');
+      await vscode.workspace.applyEdit(edit);
+      added++;
     }
+
+    return { added, skipped };
   }
 
-  private async probeAi(): Promise<boolean> {
+  // ── AI probe ───────────────────────────────────────────────────────────────
+
+  async probeAi(): Promise<boolean> {
     try {
       const reply = await this.ai.generateText('Reply with the single word: ok', 'ping');
       return !!(reply && reply.trim());
@@ -195,6 +214,8 @@ export class CommentGenerator {
       return false;
     }
   }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   private hasCommentAbove(
     document: vscode.TextDocument,
@@ -249,13 +270,23 @@ export class CommentGenerator {
     }
   }
 
+  private structuralComment(name: string, style: CommentStyle): string {
+    switch (style) {
+      case 'jsdoc':
+      case 'javadoc':
+        return `/**\n * TODO: describe ${name}\n */`;
+      case 'python': {
+        const q = '"""';
+        return `${q}TODO: describe ${name}.${q}`;
+      }
+    }
+  }
+
   private cleanComment(raw: string, style: CommentStyle): string {
     let s = raw.trim();
 
-    // Strip markdown fences.
     s = s.replace(/^```[\w]*\r?\n?/im, '').replace(/\r?\n?```\s*$/im, '').trim();
 
-    // Find the first line that looks like the start of a real comment.
     const lines = s.split('\n');
     let startIdx = 0;
     for (let i = 0; i < lines.length; i++) {
@@ -268,7 +299,6 @@ export class CommentGenerator {
     }
     s = lines.slice(startIdx).join('\n').trim();
 
-    // Wrap plain text if the model forgot comment syntax.
     if (style === 'python') {
       if (!s.startsWith('"""') && !s.startsWith("'''")) {
         const plain = s.trim();

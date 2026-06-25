@@ -28,7 +28,6 @@ interface SymbolEntry {
   callers: Relation[];
   callees: Relation[];
   methods?: MethodEntry[];
-  // For variables: the raw value excerpt so the doc shows what it holds.
   value?: string;
   exported?: boolean;
 }
@@ -194,8 +193,6 @@ export class UnderstandingGenerator {
     }
   }
 
-
-
   private groupByFile(nodes: CodeNode[]): Map<string, CodeNode[]> {
     const map = new Map<string, CodeNode[]>();
     for (const node of nodes) {
@@ -220,9 +217,6 @@ export class UnderstandingGenerator {
     return sourceLines.slice(start, end).join('\n');
   }
 
-  // Ask the AI for one-line summaries of every symbol in one file.
-  // Variables get their value excerpt included in the prompt so the AI
-  // can describe what the constant actually holds.
   private async summarizeFileSymbols(
     file: string,
     nodes: CodeNode[],
@@ -231,8 +225,6 @@ export class UnderstandingGenerator {
     if (sourceLines.length === 0) return {};
 
     const symbolSections = nodes.map(n => {
-      // For variables, include the value directly in the prompt rather than
-      // a code slice — the value IS the important context for a constant.
       if (n.kind === 'variable' && (n as any).value) {
         return `### variable ${n.name} (line ${n.line + 1})\nValue: \`${(n as any).value}\``;
       }
@@ -352,8 +344,6 @@ export class UnderstandingGenerator {
 
     const symbols: SymbolEntry[] = [];
 
-    // Module-level variables/constants — listed first so they provide
-    // context for the functions and classes that follow.
     for (const v of variables) {
       const summary = aiSummaries[v.name] ?? this.variableFallbackSummary(v);
       symbols.push({
@@ -368,12 +358,10 @@ export class UnderstandingGenerator {
       });
     }
 
-    // Standalone top-level functions.
     for (const fn of functions) {
       symbols.push(await this.toSymbolEntry(fn, graph, analyzer, aiSummaries, precise));
     }
 
-    // Classes own the methods that fall between this class and the next.
     for (let i = 0; i < classes.length; i++) {
       const cls      = classes[i];
       const nextLine = i + 1 < classes.length ? classes[i + 1].line : Number.MAX_SAFE_INTEGER;
@@ -462,16 +450,12 @@ export class UnderstandingGenerator {
     return { callers: clean(callerNodes), callees: clean(calleeNodes) };
   }
 
-  // Fallback for functions/classes/methods when AI gives nothing.
   private fallbackSummary(node: CodeNode): string {
     return `${node.kind} "${node.name}" defined in ${node.file} at line ${node.line + 1}.`;
   }
 
-  // Fallback for variables — include the value excerpt so the doc is
-  // never blank even without AI, which is especially useful for constants
-  // like SUPPORTED_LANGUAGES or SOURCE_PATTERNS.
   private variableFallbackSummary(node: CodeNode): string {
-    const value = (node as any).value;
+    const value    = (node as any).value;
     const exported = (node as any).exported ? 'Exported constant' : 'Module-level constant';
     if (value) {
       return `${exported} "${node.name}" = ${value.slice(0, 80)}`;

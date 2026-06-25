@@ -4,19 +4,17 @@ import { LanguageParser } from './LanguageParser';
 import { CodeGraph, CodeNode, CodeEdge } from './CodeGraphTypes';
 
 // File patterns to scan and folders to ignore.
+// vendor/ and *.min.js/.bundle.js added so third-party assets (materialize,
+// jquery, etc.) don't pollute the graph with single-letter functions and
+// false caller/callee relationships.
 const FILE_GLOB   = '**/*.{js,jsx,ts,tsx,py,java}';
-const IGNORE_GLOB = '{**/node_modules/**,**/dist/**,**/out/**,**/build/**,**/*.min.js}';
+const IGNORE_GLOB = '{**/node_modules/**,**/dist/**,**/out/**,**/build/**,**/static/**,**/vendor/**,**/assets/**,**/*.min.js,**/*.bundle.js,**/*.chunk.js}';
 
-// build a CodeGraph for the workspace by parsing every
-// supported file and connecting calls to the symbols they reference.
-// It depends on LanguageParser (injected) and the data types — nothing else.
 export class CodeGraphBuilder {
-  // The most recently built graph, cached for callers to read.
   private graph: CodeGraph = { nodes: [], edges: [] };
 
   constructor(private readonly parser: LanguageParser) {}
 
-  // Build the graph across the whole workspace and cache it.
   async build(): Promise<CodeGraph> {
     const root = this.workspaceRoot();
     if (!root) {
@@ -28,39 +26,41 @@ export class CodeGraphBuilder {
     const sourceUris = this.dropCompiledSiblings(allUris);
 
     const nodes: CodeNode[] = [];
-    // Records "this symbol calls something named X" before we resolve X to an id.
-    // The receiver (what the call was made on) is kept so resolution can tell
-    // this.foo() and store.get() apart from any other foo/get in the project.
     const pendingCalls: Array<{ fromId: string; calleeName: string; receiver: string | null }> = [];
-    // Maps a bare symbol name to the node ids that declare it,
-    // used to resolve call names back to real nodes.
     const nameToIds = new Map<string, string[]>();
 
     for (const uri of sourceUris) {
-      // Security: never read a file that resolves outside the workspace.
       if (!this.isInsideWorkspace(uri.fsPath, root)) continue;
 
       let document: vscode.TextDocument;
       try {
         document = await vscode.workspace.openTextDocument(uri);
       } catch {
-        continue; // unreadable file — skip, never crash the build
+        continue;
       }
 
       const relFile = path.relative(root, uri.fsPath);
       const result  = await this.parser.parse(document);
 
-      // Turn each declared symbol into a node.
       for (const symbol of result.symbols) {
         const id = `${relFile}::${symbol.name}`;
-        nodes.push({ id, name: symbol.name, kind: symbol.kind, file: relFile, line: symbol.line, nameColumn: symbol.nameColumn });
+        nodes.push({
+          id,
+          name:       symbol.name,
+          kind:       symbol.kind,
+          file:       relFile,
+          line:       symbol.line,
+          nameColumn: symbol.nameColumn,
+          // Variable-specific fields
+          value:    (symbol as any).value,
+          exported: (symbol as any).exported,
+        });
 
         const existing = nameToIds.get(symbol.name) ?? [];
         existing.push(id);
         nameToIds.set(symbol.name, existing);
       }
 
-      // Record each call, attributing it to the nearest enclosing symbol.
       for (const call of result.calls) {
         const fromId = this.enclosingSymbolId(result.symbols, call.line, relFile);
         if (fromId) {
@@ -69,10 +69,6 @@ export class CodeGraphBuilder {
       }
     }
 
-    // Class names in the project, used to match a receiver variable to a type
-    // by convention (e.g. receiver "analyzer" → class "ImpactAnalyzer",
-    // receiver "store" → class "ResultStore"). This is a heuristic, not full
-    // type inference, but it resolves most same-named methods correctly.
     const classNames = nodes.filter(n => n.kind === 'class').map(n => n.name);
     const edges = this.resolveEdges(pendingCalls, nameToIds, classNames);
 
@@ -80,13 +76,10 @@ export class CodeGraphBuilder {
     return this.graph;
   }
 
-  // Return the cached graph without rebuilding.
   getGraph(): CodeGraph {
     return this.graph;
   }
 
-  // Write the current graph to codereach.json at the workspace root.
-  // This file is shareable with new developers and AI tools.
   async exportToFile(): Promise<vscode.Uri | null> {
     const root = this.workspaceRoot();
     if (!root) return null;
@@ -98,9 +91,6 @@ export class CodeGraphBuilder {
   }
 
   // Skip a compiled .js/.jsx file when a .ts/.tsx sibling exists.
-  // This avoids indexing build output sitting next to source, which would
-  // otherwise add duplicate nodes and TypeScript's async helper functions
-  // (adopt, fulfilled, rejected, step, verb) as noise.
   private dropCompiledSiblings(uris: vscode.Uri[]): vscode.Uri[] {
     const allPaths = new Set(uris.map(u => u.fsPath));
     return uris.filter(uri => {
@@ -111,8 +101,6 @@ export class CodeGraphBuilder {
     });
   }
 
-  // Find which declared symbol a call belongs to, by line position.
-  // The enclosing symbol is the last one declared at or before the call line.
   private enclosingSymbolId(
     symbols: Array<{ name: string; line: number }>,
     callLine: number,
@@ -127,11 +115,6 @@ export class CodeGraphBuilder {
     return best ? `${relFile}::${best.name}` : null;
   }
 
-  // Turn recorded calls into edges by matching callee names to node ids.
-  // Resolution is receiver-aware: when a call is this.foo() or store.get(),
-  // the receiver narrows which same-named symbol is meant, instead of linking
-  // to every foo/get in the project. Falls back to same-file preference when
-  // the receiver gives no signal. Unresolved names (library calls) are dropped.
   private resolveEdges(
     pendingCalls: Array<{ fromId: string; calleeName: string; receiver: string | null }>,
     nameToIds: Map<string, string[]>,
@@ -140,41 +123,32 @@ export class CodeGraphBuilder {
     const edges: CodeEdge[] = [];
     const seen = new Set<string>();
 
-    // Receivers that are language/runtime built-ins or config objects, never
-    // project classes. A call like JSON.parse(), cfg.get(), os.path() or
-    // System.out() has one of these as its receiver, so I drop it instead of
-    // linking it to a project symbol of the same name. I include the common
-    // built-ins for all supported languages (JS/TS, Python, Java).
+    // Known language/runtime built-in receivers — calls on these are library
+    // calls, not calls into project symbols. Covers JS/TS, Python, and Java.
     const BUILTIN_RECEIVERS = new Set([
       // JavaScript / TypeScript
       'json', 'object', 'array', 'math', 'console', 'promise', 'date',
       'number', 'string', 'boolean', 'map', 'set', 'symbol', 'reflect',
-      'window', 'document', 'process', 'cfg', 'config',
+      'window', 'document', 'process', 'cfg', 'config', 'module', 'exports',
       // Python
       'os', 'sys', 're', 'io', 'json', 'logging', 'collections', 'itertools',
-      'functools', 'typing', 'super',
+      'functools', 'typing', 'super', 'math', 'random', 'datetime', 'pathlib',
+      'subprocess', 'threading', 'asyncio', 'abc', 'enum', 'uuid', 'hashlib',
       // Java
       'system', 'collections', 'objects', 'arrays', 'optional', 'stream',
-      'list', 'integer', 'long', 'double', 'character',
+      'list', 'integer', 'long', 'double', 'character', 'string', 'math',
+      'thread', 'runtime', 'class', 'object',
     ]);
 
-    // Self-reference receivers across languages: JS/TS use "this", Python uses
-    // "self" (instance) and "cls" (classmethod). All mean "a method on the
-    // current class", so I resolve them within the caller's own file.
+    // Self-reference receivers across languages.
     const SELF_RECEIVERS = new Set(['this', 'self', 'cls']);
 
-    // Map a lowercased receiver variable to a class name by naming convention:
-    // "analyzer" → "ImpactAnalyzer", "store" → "ResultStore", "dashboard" →
-    // "DashboardProvider". A class matches if its lowercased name contains the
-    // receiver, or the receiver contains a meaningful chunk of the class name.
     const classFor = (receiver: string): string | null => {
       const r = receiver.toLowerCase();
-      // Exact-ish: class name lowercased equals or contains the receiver.
       let best: string | null = null;
       for (const cls of classNames) {
         const c = cls.toLowerCase();
         if (c === r || c.includes(r) || r.includes(c)) {
-          // Prefer the longest class name match (most specific).
           if (!best || cls.length > best.length) best = cls;
         }
       }
@@ -182,13 +156,7 @@ export class CodeGraphBuilder {
     };
 
     for (const call of pendingCalls) {
-      // Skip calls whose receiver is computed (a call/index result like
-      // cfg().get()) — the receiver type is unknown, so name-matching would
-      // create false edges. The parser marks these "<computed>".
       if (call.receiver === '<computed>') continue;
-
-      // Skip calls on known built-in/runtime receivers — these are library
-      // calls (JSON.parse, Map.get, cfg.get), not calls into project symbols.
       if (call.receiver && BUILTIN_RECEIVERS.has(call.receiver.toLowerCase())) continue;
 
       const targetIds = nameToIds.get(call.calleeName);
@@ -198,17 +166,11 @@ export class CodeGraphBuilder {
       let chosen: string[];
 
       if (call.receiver && SELF_RECEIVERS.has(call.receiver)) {
-        // this.method() / self.method() / cls.method() — the target almost
-        // always lives in the same file as the caller (the same class). I
-        // restrict to that, which removes nearly all cross-class collisions
-        // for common names across JS/TS and Python.
         const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
         chosen = sameFile.length > 0 ? sameFile : targetIds;
       } else if (call.receiver && classFor(call.receiver)) {
-        // store.get() — resolve to the matched class's method if one exists.
         const cls = classFor(call.receiver)!;
         const inClass = targetIds.filter(id => this.fileDeclaresClass(id, cls, nameToIds));
-        // If we can locate the class's file, prefer targets in that file.
         const classFiles = new Set(
           (nameToIds.get(cls) ?? []).map(id => id.split('::')[0]),
         );
@@ -217,18 +179,15 @@ export class CodeGraphBuilder {
                : inClassFile.length > 0 ? inClassFile
                : targetIds;
       } else {
-        // No useful receiver — keep the previous same-file preference.
         const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
         chosen = sameFile.length > 0 ? sameFile : targetIds;
       }
 
       for (const toId of chosen) {
-        if (toId === call.fromId) continue; // ignore self-calls
-
+        if (toId === call.fromId) continue;
         const key = `${call.fromId}->${toId}`;
         if (seen.has(key)) continue;
         seen.add(key);
-
         edges.push({ from: call.fromId, to: toId, relation: 'calls' });
       }
     }
@@ -236,16 +195,12 @@ export class CodeGraphBuilder {
     return edges;
   }
 
-  // True when the node id sits in the same file where the given class is
-  // declared — used to keep receiver-resolved calls inside the class's file.
   private fileDeclaresClass(nodeId: string, className: string, nameToIds: Map<string, string[]>): boolean {
     const nodeFile = nodeId.split('::')[0];
     const classIds = nameToIds.get(className) ?? [];
     return classIds.some(id => id.split('::')[0] === nodeFile);
   }
 
-  // Security guard: a resolved path must sit inside the workspace root.
-  // Blocks path traversal (e.g. "../../etc/passwd").
   private isInsideWorkspace(filePath: string, root: string): boolean {
     const resolved = path.resolve(filePath);
     const base     = path.resolve(root) + path.sep;
