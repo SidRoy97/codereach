@@ -12,7 +12,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
   private scope: ViewScope = { kind: 'workspace' };
   private readonly disposables: vscode.Disposable[] = [];
 
-  constructor(private readonly store: ResultStore) {}
+  constructor(
+    private readonly store: ResultStore,
+    private readonly triggerAnalysis: () => void,
+  ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -23,13 +26,17 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
       view.webview.onDidReceiveMessage(message => this.handleMessage(message)),
     );
 
-    // Refresh every time the panel becomes visible — covers the case where
-    // the user opens the dashboard while background analysis is still running,
-    // or after it has already finished. Without this the webview stays frozen
-    // at 0 issues until the user manually clicks Workspace.
+    // When the dashboard becomes visible and the store is empty, kick off
+    // workspace analysis automatically so the user never sees 0 issues on
+    // first open. If analysis already ran, just refresh the view.
     this.disposables.push(
       view.onDidChangeVisibility(() => {
-        if (view.visible) this.refresh();
+        if (!view.visible) return;
+        if (this.store.getAll().length === 0) {
+          this.triggerAnalysis();
+        } else {
+          this.refresh();
+        }
       }),
     );
 
