@@ -1,0 +1,16 @@
+src/**
+tsconfig.json
+.vscode/**
+node_modules/**
+.git/**
+.gitignore
+**/*.test.ts
+**/*.spec.ts
+**/.eslintrc*
+**/.prettierrc*
+CHANGELOG.md
+CONTRIBUTING.md
+**/*.map
+tree-sitter-*/**
+*.grammar.js
+screenshots/**
