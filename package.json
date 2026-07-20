@@ -102,6 +102,14 @@
       {
         "command": "codereach.generateCommentsWorkspace",
         "title": "CodeReach: Generate Comments for Entire Workspace"
+      },
+      {
+        "command": "codereach.explainSymbol",
+        "title": "CodeReach: Explain Symbol at Cursor"
+      },
+      {
+        "command": "codereach.showCommunities",
+        "title": "CodeReach: Show Subsystems (Communities)"
       }
     ],
     "configuration": {
@@ -235,6 +243,14 @@
         {
           "command": "codereach.generateComments",
           "group": "codereach@7"
+        },
+        {
+          "command": "codereach.explainSymbol",
+          "group": "codereach@7"
+        },
+        {
+          "command": "codereach.showCommunities",
+          "group": "codereach@8"
         }
       ]
     }

@@ -34,6 +34,8 @@ import { LiveImpactBar }        from './graph/LiveImpactBar';
 import { FlowTracer }           from './graph/FlowTracer';
 import { SafetyChecker }        from './graph/SafetyChecker';
 import { PathFinder }           from './graph/PathFinder';
+import { CommunityDetector }    from './graph/CommunityDetector';
+import { Explainer }            from './graph/Explainer';
 
 // Reports
 import { ProblemsReporter }     from './reports/ProblemsReporter';
@@ -111,6 +113,8 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const flowTracer    = new FlowTracer(() => graphBuilder.getGraph());
   const safetyChecker = new SafetyChecker(() => graphBuilder.getGraph());
   const pathFinder    = new PathFinder(() => graphBuilder.getGraph());
+  const communities   = new CommunityDetector(() => graphBuilder.getGraph());
+  const explainer     = new Explainer(() => graphBuilder.getGraph());
 
   // --- Context / AI assist ---
   const summarizer   = new FileSummarizer(ai, context);
@@ -487,6 +491,49 @@ function activateInternal(context: vscode.ExtensionContext): void {
         intro: rows.length === 0
           ? `No connection found between ${start.name} and ${target.name}.`
           : `${rows.length} step(s) connect ${start.name} to ${target.name}. Click any step to open it.`,
+        rows,
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codereach.explainSymbol', async () => {
+      const sym = await symbolUnderCursor();
+      if (!sym) return;
+      const rows = explainer.explain(sym.id);
+      listPanel.show({
+        title: `Explain: ${sym.name}`,
+        intro: rows.length <= 1
+          ? `${sym.name} has no recorded callers or callees.`
+          : `${sym.name} in context: who calls it and what it calls. Click any row to open it.`,
+        rows,
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codereach.showCommunities', async () => {
+      await ensureGraph();
+      const graph = graphBuilder.getGraph();
+      const found = communities.detect();
+      const rows = found.flatMap(c =>
+        c.members
+          .map(id => graph.nodes.find(n => n.id === id))
+          .filter((n): n is NonNullable<typeof n> => !!n)
+          .map(n => ({
+            label:  n.name,
+            detail: `${n.file}:${n.line + 1}`,
+            file:   n.file,
+            line:   n.line,
+            badge:  `subsystem ${c.id + 1}`,
+            tone:   'normal' as const,
+          })),
+      );
+      listPanel.show({
+        title: 'Subsystems',
+        intro: found.length === 0
+          ? 'No symbols in the graph yet.'
+          : `${found.length} subsystem(s) detected across ${graph.nodes.length} symbols.`,
         rows,
       });
     }),
