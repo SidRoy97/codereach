@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { LanguageParser, ParsedImport } from './LanguageParser';
 import { CodeGraph, CodeNode, CodeEdge } from './CodeGraphTypes';
+import { GraphCache } from './GraphCache';
 
 // File patterns to scan and folders to ignore.
 // vendor/ and *.min.js/.bundle.js added so third-party assets (materialize,
@@ -12,6 +13,7 @@ const IGNORE_GLOB = '{**/node_modules/**,**/dist/**,**/out/**,**/build/**,**/tar
 
 export class CodeGraphBuilder {
   private graph: CodeGraph = { nodes: [], edges: [] };
+  private readonly cache = new GraphCache();
 
   constructor(private readonly parser: LanguageParser) {}
 
@@ -24,6 +26,10 @@ export class CodeGraphBuilder {
 
     const allUris = await vscode.workspace.findFiles(FILE_GLOB, IGNORE_GLOB);
     const sourceUris = this.dropCompiledSiblings(allUris);
+
+    const cachePath = path.join(root, '.codereach', 'graph-cache.json');
+    this.cache.load(cachePath);
+    const liveFiles = new Set<string>();
 
     const nodes: CodeNode[] = [];
     const pendingCalls: Array<{ fromId: string; calleeName: string; receiver: string | null }> = [];
@@ -44,7 +50,13 @@ export class CodeGraphBuilder {
       }
 
       const relFile = path.relative(root, uri.fsPath);
-      const result  = await this.parser.parse(document);
+      liveFiles.add(relFile);
+      const hash = GraphCache.hash(document.getText());
+      let result = this.cache.get(relFile, hash);
+      if (!result) {
+        result = await this.parser.parse(document);
+        this.cache.set(relFile, hash, result);
+      }
 
       for (const symbol of result.symbols) {
         const id = `${relFile}::${symbol.name}`;
@@ -80,6 +92,9 @@ export class CodeGraphBuilder {
 
     const classNames = nodes.filter(n => n.kind === 'class').map(n => n.name);
     const edges = this.resolveEdges(pendingCalls, nameToIds, classNames, fileImports);
+
+    this.cache.prune(liveFiles);
+    this.cache.save(cachePath);
 
     this.graph = { nodes, edges };
     return this.graph;
