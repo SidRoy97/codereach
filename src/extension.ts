@@ -36,6 +36,8 @@ import { SafetyChecker }        from './graph/SafetyChecker';
 import { PathFinder }           from './graph/PathFinder';
 import { CommunityDetector }    from './graph/CommunityDetector';
 import { Explainer }            from './graph/Explainer';
+import { DiffImpact }           from './graph/DiffImpact';
+import { GitDiff }              from './graph/GitDiff';
 
 // Reports
 import { ProblemsReporter }     from './reports/ProblemsReporter';
@@ -115,6 +117,8 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const pathFinder    = new PathFinder(() => graphBuilder.getGraph());
   const communities   = new CommunityDetector(() => graphBuilder.getGraph());
   const explainer     = new Explainer(() => graphBuilder.getGraph());
+  const diffImpact    = new DiffImpact(() => graphBuilder.getGraph());
+  const gitDiff       = new GitDiff();
 
   // --- Context / AI assist ---
   const summarizer   = new FileSummarizer(ai, context);
@@ -535,6 +539,33 @@ function activateInternal(context: vscode.ExtensionContext): void {
           ? 'No symbols in the graph yet.'
           : `${found.length} subsystem(s) detected across ${graph.nodes.length} symbols.`,
         rows,
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codereach.blastRadiusSince', async () => {
+      const root = getRoot();
+      if (!root) { vscode.window.showWarningMessage('CodeReach: Open a folder first.'); return; }
+      const ref = await vscode.window.showInputBox({ prompt: 'Compare against which git ref?', value: 'main' });
+      if (!ref) return;
+      await ensureGraph();
+      let changed: string[];
+      try {
+        changed = await gitDiff.changedFiles(root, ref);
+      } catch {
+        vscode.window.showErrorMessage(`CodeReach: could not run git diff against "${ref}".`);
+        return;
+      }
+      if (changed.length === 0) {
+        vscode.window.showInformationMessage(`CodeReach: no source files changed since ${ref}.`);
+        return;
+      }
+      const result = diffImpact.analyze(new Set(changed));
+      listPanel.show({
+        title: `Blast radius since ${ref}`,
+        intro: `${changed.length} changed file(s) affect ${result.impactedSymbols.length} downstream symbol(s) across ${result.impactedFiles.length} other file(s). Review these before merging.`,
+        rows: diffImpact.toRows(result),
       });
     }),
   );

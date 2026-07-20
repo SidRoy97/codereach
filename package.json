@@ -110,6 +110,10 @@
       {
         "command": "codereach.showCommunities",
         "title": "CodeReach: Show Subsystems (Communities)"
+      },
+      {
+        "command": "codereach.blastRadiusSince",
+        "title": "CodeReach: Blast Radius Since Git Ref"
       }
     ],
     "configuration": {
@@ -251,6 +255,10 @@
         {
           "command": "codereach.showCommunities",
           "group": "codereach@8"
+        },
+        {
+          "command": "codereach.blastRadiusSince",
+          "group": "codereach@9"
         }
       ]
     }
