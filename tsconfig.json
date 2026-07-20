@@ -11,6 +11,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", ".vscode-test", "out"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    ".test-out",
+    ".vscode-test",
+    "node_modules",
+    "out",
+    "src/test"
+  ]
 }

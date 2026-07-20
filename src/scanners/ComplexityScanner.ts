@@ -1,65 +1,86 @@
 import * as vscode from 'vscode';
 import { Issue } from '../types';
 import { IScanner, IConfigProvider } from '../interfaces';
+import { LanguageParser } from '../graph/LanguageParser';
+import { scoreFunctions, FunctionScore } from '../graph/ComplexityCore';
 
-// Keywords that add +1 to cyclomatic complexity per language
-const BRANCHES: Record<string, RegExp[]> = {
-  javascript: [/\bif\s*\(/g, /\belse\s+if\s*\(/g, /\bfor\s*\(/g, /\bwhile\s*\(/g, /\bcase\s+.+:/g, /\bcatch\s*\(/g, /&&|\|\|/g, /\?\s*[^:]/g],
-  python:     [/\bif\b/g, /\belif\b/g, /\bfor\b/g, /\bwhile\b/g, /\bexcept\b/g, /\band\b|\bor\b/g],
-  java:       [/\bif\s*\(/g, /\belse\s+if\s*\(/g, /\bfor\s*\(/g, /\bwhile\s*\(/g, /\bcase\s+.+:/g, /\bcatch\s*\(/g, /&&|\|\|/g],
-};
+interface FileScore {
+  version: number;
+  issues:  Issue[];
+  average: number;
+}
 
-// Single job: count decision points per function and flag ones above the threshold
+// I turn per-function complexity scores into issues for the current file.
 export class ComplexityScanner implements IScanner {
   readonly name = 'ComplexityScanner';
 
-  constructor(private readonly config: IConfigProvider) {}
+  private cache = new Map<string, FileScore>();
 
-  scan(document: vscode.TextDocument): Issue[] {
+  constructor(
+    private readonly config: IConfigProvider,
+    private readonly parser: LanguageParser,
+  ) {}
+
+  // I return one issue per function that scores above the configured threshold.
+  async scan(document: vscode.TextDocument): Promise<Issue[]> {
+    return (await this.measure(document)).issues;
+  }
+
+  // I return the average complexity across every function in the file.
+  async getAverageComplexity(document: vscode.TextDocument): Promise<number> {
+    return (await this.measure(document)).average;
+  }
+
+  // I parse the file once, score every function, and cache the result per edit.
+  private async measure(document: vscode.TextDocument): Promise<FileScore> {
+    const key    = document.uri.toString();
+    const cached = this.cache.get(key);
+    if (cached && cached.version === document.version) return cached;
+
+    const tree = await this.parseSafely(document);
+    const scores = tree ? scoreFunctions(tree.root, tree.grammar) : [];
+
     const threshold = this.config.getComplexityThreshold();
-    const patterns  = BRANCHES[this.normalizeLang(document.languageId)] ?? BRANCHES['javascript'];
-    const lines     = Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
-    const issues: Issue[] = [];
+    const issues    = scores.filter(fn => fn.score > threshold).map(fn => this.toIssue(fn, threshold));
+    const average   = this.averageOf(scores);
 
-    for (let i = 0; i < lines.length; i++) {
-      // Only score lines that look like function declarations
-      if (!/function|def |=>/.test(lines[i])) continue;
-
-      let score = 1; // every function starts at complexity 1
-      for (const p of patterns) {
-        p.lastIndex = 0;
-        score += (lines[i].match(p) ?? []).length;
-      }
-
-      if (score > threshold) {
-        issues.push({
-          id: `complexity:${i}`, line: i, column: 0,
-          message: `High cyclomatic complexity (${score}) — threshold is ${threshold}.`,
-          severity: score > threshold * 2 ? 'error' : 'warning',
-          category: 'complexity', rule: 'complexity:cyclomatic',
-          suggestion: 'Break this into smaller focused functions.',
-          source: 'static',
-        });
-      }
-    }
-    return issues;
+    return this.remember(key, { version: document.version, issues, average });
   }
 
-  // Average complexity across all lines — used by the dashboard
-  getAverageComplexity(document: vscode.TextDocument): number {
-    const patterns = BRANCHES[this.normalizeLang(document.languageId)] ?? BRANCHES['javascript'];
-    const lines    = Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
-    let total = 0;
-    for (const line of lines) {
-      for (const p of patterns) { p.lastIndex = 0; total += (line.match(p) ?? []).length; }
+  // I parse the document and swallow any parser error into a null result.
+  private async parseSafely(document: vscode.TextDocument) {
+    try {
+      return await this.parser.parseTree(document);
+    } catch {
+      return null;
     }
-    return lines.length > 0 ? Math.round((total / lines.length) * 10) : 0;
   }
 
-  private normalizeLang(id: string): string {
-    if (['javascript','typescript','javascriptreact','typescriptreact'].includes(id)) return 'javascript';
-    if (id === 'python') return 'python';
-    if (id === 'java')   return 'java';
-    return 'javascript';
+  // I turn one over-threshold function into a reportable issue.
+  private toIssue(fn: FunctionScore, threshold: number): Issue {
+    return {
+      id:         `complexity:${fn.line}:${fn.name}`,
+      line:       fn.line,
+      column:     fn.column,
+      message:    `Function "${fn.name}" has cyclomatic complexity ${fn.score} (threshold ${threshold}).`,
+      severity:   fn.score > threshold * 2 ? 'error' : 'warning',
+      category:   'complexity',
+      rule:       'complexity:cyclomatic',
+      suggestion: 'Break this into smaller focused functions; each branch is a path to test.',
+      source:     'static',
+    };
+  }
+
+  // I average the scores, returning zero when the file has no functions.
+  private averageOf(scores: FunctionScore[]): number {
+    if (scores.length === 0) return 0;
+    const total = scores.reduce((sum, fn) => sum + fn.score, 0);
+    return Math.round(total / scores.length);
+  }
+
+  // I store a result under its file key and hand the same result back.
+  private remember(key: string, result: FileScore): FileScore {
+    this.cache.set(key, result);
+    return result;
   }
 }

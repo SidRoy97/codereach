@@ -18,6 +18,8 @@ export interface CodeEdge {
   from: string;
   to: string;
   relation: 'calls' | 'imports';
+  // 'extracted' = certain (import or same-file); 'inferred' = resolved by heuristic.
+  confidence: 'extracted' | 'inferred';
 }
 
 export interface CodeGraph {
