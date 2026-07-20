@@ -10,7 +10,6 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
   static readonly viewId = 'codereach.dashboard';
   private view?: vscode.WebviewView;
   private scope: ViewScope = { kind: 'idle' };
-  private analysisAttempted = false;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -41,7 +40,6 @@ export class DashboardProvider implements vscode.WebviewViewProvider, vscode.Dis
         } else {
           setTimeout(() => {
             if (this.store.getAll().length === 0) {
-              this.analysisAttempted = true;
               this.triggerAnalysis();
             } else {
               this.refresh();

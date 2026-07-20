@@ -44,7 +44,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
       staticIssues.push(...this.static_.scan(document));
     }
 
-    staticIssues.push(...this.complexity.scan(document));
+    staticIssues.push(...await this.complexity.scan(document));
 
     const { issues: dupIssues, blocks } = this.duplicate.scanWithBlocks(document);
     staticIssues.push(...dupIssues);
@@ -60,7 +60,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
       uri:             document.uri,
       language:        document.languageId,
       issues:          this.deduplicate(cleanStatic),
-      complexity:      this.complexity.getAverageComplexity(document),
+      complexity:      await this.complexity.getAverageComplexity(document),
       duplicateBlocks: blocks,
       analyzedAt:      new Date(),
     };
