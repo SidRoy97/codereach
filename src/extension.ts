@@ -38,6 +38,8 @@ import { CommunityDetector }    from './graph/CommunityDetector';
 import { Explainer }            from './graph/Explainer';
 import { DiffImpact }           from './graph/DiffImpact';
 import { GitDiff }              from './graph/GitDiff';
+import { DuplicateDetector }    from './graph/DuplicateDetector';
+import { extractFunctions }     from './graph/FunctionExtractor';
 
 // Reports
 import { ProblemsReporter }     from './reports/ProblemsReporter';
@@ -119,6 +121,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const explainer     = new Explainer(() => graphBuilder.getGraph());
   const diffImpact    = new DiffImpact(() => graphBuilder.getGraph());
   const gitDiff       = new GitDiff();
+  const duplicates    = new DuplicateDetector();
 
   // --- Context / AI assist ---
   const summarizer   = new FileSummarizer(ai, context);
@@ -538,6 +541,53 @@ function activateInternal(context: vscode.ExtensionContext): void {
         intro: found.length === 0
           ? 'No symbols in the graph yet.'
           : `${found.length} subsystem(s) detected across ${graph.nodes.length} symbols.`,
+        rows,
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codereach.findDuplicates', async () => {
+      const root = getRoot();
+      if (!root) { vscode.window.showWarningMessage('CodeReach: Open a folder first.'); return; }
+      const uris = await vscode.workspace.findFiles(
+        '**/*.{js,jsx,ts,tsx,py,java}',
+        '{**/node_modules/**,**/dist/**,**/out/**,**/build/**,**/.git/**,**/venv/**,**/.venv/**}',
+      );
+      const items: Array<{ id: string; text: string; file: string; line: number }> = [];
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'CodeReach: scanning for near-duplicates…' },
+        async () => {
+          for (const uri of uris) {
+            let document: vscode.TextDocument;
+            try { document = await vscode.workspace.openTextDocument(uri); } catch { continue; }
+            const tree = await parser.parseTree(document);
+            if (!tree) continue;
+            const relFile = path.relative(root, uri.fsPath);
+            for (const fn of extractFunctions(tree.root, tree.grammar)) {
+              items.push({ id: `${fn.name}  ${relFile}:${fn.line + 1}`, text: fn.text, file: relFile, line: fn.line });
+            }
+          }
+        },
+      );
+      const locate = new Map(items.map(i => [i.id, i]));
+      const pairs = duplicates.findNearDuplicates(items, 0.8);
+      const rows = pairs.map(p => {
+        const first = locate.get(p.a)!;
+        return {
+          label:  `${Math.round(p.similarity * 100)}%  ${p.a}`,
+          detail: `≈ ${p.b}`,
+          file:   first.file,
+          line:   first.line,
+          badge:  'near-dup',
+          tone:   'danger' as const,
+        };
+      });
+      listPanel.show({
+        title: 'Near-duplicate functions',
+        intro: pairs.length === 0
+          ? 'No near-duplicate functions found (≥80% similarity).'
+          : `${pairs.length} near-duplicate pair(s) at ≥80% similarity. Click to open the first of each pair.`,
         rows,
       });
     }),

@@ -114,6 +114,10 @@
       {
         "command": "codereach.blastRadiusSince",
         "title": "CodeReach: Blast Radius Since Git Ref"
+      },
+      {
+        "command": "codereach.findDuplicates",
+        "title": "CodeReach: Find Near-Duplicate Functions"
       }
     ],
     "configuration": {
@@ -259,6 +263,10 @@
         {
           "command": "codereach.blastRadiusSince",
           "group": "codereach@9"
+        },
+        {
+          "command": "codereach.findDuplicates",
+          "group": "codereach@10"
         }
       ]
     }
