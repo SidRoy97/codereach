@@ -33,6 +33,7 @@ import { SymbolLocator }        from './graph/SymbolLocator';
 import { LiveImpactBar }        from './graph/LiveImpactBar';
 import { FlowTracer }           from './graph/FlowTracer';
 import { SafetyChecker }        from './graph/SafetyChecker';
+import { PathFinder }           from './graph/PathFinder';
 
 // Reports
 import { ProblemsReporter }     from './reports/ProblemsReporter';
@@ -78,7 +79,8 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const config     = new ConfigManager();
   const store      = new ResultStore();
   const static_    = new StaticScanner();
-  const complexity = new ComplexityScanner(config);
+  const parser     = new LanguageParser(context.extensionPath);
+  const complexity = new ComplexityScanner(config, parser);
   const duplicate  = new DuplicateScanner(config);
   const ai         = new AiScanner(config);
   const diagPub    = new DiagnosticsPublisher();
@@ -98,7 +100,6 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const codeActions = new CodeActionsProvider(store, ai);
 
   // --- Code graph feature ---
-  const parser       = new LanguageParser(context.extensionPath);
   const graphBuilder = new CodeGraphBuilder(parser);
   const graphPanel   = new GraphPanel(context.extensionUri, () => graphBuilder.getGraph());
   const codeLens     = new ImpactCodeLens(() => graphBuilder.getGraph());
@@ -109,6 +110,7 @@ function activateInternal(context: vscode.ExtensionContext): void {
   const liveImpactBar = new LiveImpactBar(() => graphBuilder.getGraph(), getRoot);
   const flowTracer    = new FlowTracer(() => graphBuilder.getGraph());
   const safetyChecker = new SafetyChecker(() => graphBuilder.getGraph());
+  const pathFinder    = new PathFinder(() => graphBuilder.getGraph());
 
   // --- Context / AI assist ---
   const summarizer   = new FileSummarizer(ai, context);
@@ -425,6 +427,16 @@ function activateInternal(context: vscode.ExtensionContext): void {
     return { id: node.id, name: node.name };
   };
 
+  // I let the user pick a second symbol from the graph to trace a path to.
+  const pickTargetSymbol = async (excludeId: string): Promise<{ id: string; name: string } | null> => {
+    const choices = graphBuilder.getGraph().nodes
+      .filter(node => node.id !== excludeId)
+      .map(node => ({ label: node.name, description: `${node.file}:${node.line + 1}`, id: node.id }));
+    if (choices.length === 0) { vscode.window.showInformationMessage('CodeReach: No other symbols in the graph.'); return null; }
+    const picked = await vscode.window.showQuickPick(choices, { placeHolder: 'Trace a path to which symbol?' });
+    return picked ? { id: picked.id, name: picked.label } : null;
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('codereach.showImpactForCursor', async () => {
       const sym = await symbolUnderCursor();
@@ -458,6 +470,23 @@ function activateInternal(context: vscode.ExtensionContext): void {
         intro: rows.length === 0
           ? `Nothing calls ${sym.name}. Changing it looks safe.`
           : `${rows.length} call site(s) would be affected (${crossFile} cross-file, higher risk). Review these before changing ${sym.name}.`,
+        rows,
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codereach.findPath', async () => {
+      const start = await symbolUnderCursor();
+      if (!start) return;
+      const target = await pickTargetSymbol(start.id);
+      if (!target) return;
+      const rows = pathFinder.find(start.id, target.id);
+      listPanel.show({
+        title: `Path: ${start.name} → ${target.name}`,
+        intro: rows.length === 0
+          ? `No connection found between ${start.name} and ${target.name}.`
+          : `${rows.length} step(s) connect ${start.name} to ${target.name}. Click any step to open it.`,
         rows,
       });
     }),

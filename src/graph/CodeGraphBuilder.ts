@@ -207,11 +207,14 @@ export class CodeGraphBuilder {
 
       const callerFile = call.fromId.split('::')[0];
       let chosen: string[];
+      // I treat every link as inferred until a certain rule proves otherwise.
+      let confidence: CodeEdge['confidence'] = 'inferred';
 
       if (call.receiver && SELF_RECEIVERS.has(call.receiver)) {
         // this.x / self.x / cls.x — always same-file
         const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
         chosen = sameFile.length > 0 ? sameFile : [];
+        confidence = 'extracted';
 
       } else if (call.receiver && classFor(call.receiver)) {
         // store.get(), Student.create() — receiver names a known class
@@ -241,6 +244,7 @@ export class CodeGraphBuilder {
           // Receiver present but unrecognized — only allow same-file
           const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
           chosen = sameFile;
+          confidence = 'extracted';
         }
 
       } else {
@@ -268,7 +272,7 @@ export class CodeGraphBuilder {
               const key = `${call.fromId}->${toId}`;
               if (seen.has(key)) continue;
               seen.add(key);
-              edges.push({ from: call.fromId, to: toId, relation: 'calls' });
+              edges.push({ from: call.fromId, to: toId, relation: 'calls', confidence: 'extracted' });
             }
             continue;
           }
@@ -278,6 +282,7 @@ export class CodeGraphBuilder {
         const sameFile = targetIds.filter(id => id.split('::')[0] === callerFile);
         if (sameFile.length > 0) {
           chosen = sameFile;
+          confidence = 'extracted';
         } else if (AMBIGUOUS_NAMES.has(call.calleeName) && fileCountForName(call.calleeName) > 1) {
           // Ambiguous name in multiple files with no receiver and no import — drop it.
           // This is the main false-positive eliminator.
@@ -298,7 +303,7 @@ export class CodeGraphBuilder {
         const key = `${call.fromId}->${toId}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        edges.push({ from: call.fromId, to: toId, relation: 'calls' });
+        edges.push({ from: call.fromId, to: toId, relation: 'calls', confidence });
       }
     }
 
